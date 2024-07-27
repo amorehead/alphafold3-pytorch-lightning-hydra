@@ -687,7 +687,7 @@ def cluster_interfaces(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Cluster chains and interfaces within the AlphaFold 3 PDB dataset's filtered mmCIF files."
+        description="Cluster chains and interfaces within the AlphaFold 3 PDB training dataset's filtered mmCIF files."
     )
     parser.add_argument(
         "--mmcif_dir",

@@ -162,7 +162,7 @@ def filter_num_tokens(mmcif_object: MmcifObject, max_tokens: int = 2560) -> bool
 @typecheck
 def filter_num_chains(mmcif_object: MmcifObject, max_chains: int = 1000) -> bool:
     """Filter based on number of chains."""
-    return len(mmcif_object.structure.get_chains()) <= max_chains
+    return len(list(mmcif_object.structure.get_chains())) <= max_chains
 
 
 @typecheck
