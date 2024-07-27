@@ -1074,7 +1074,8 @@ def alphafold3_input_to_molecule_input(alphafold3_input: Alphafold3Input) -> Mol
 @typecheck
 @dataclass
 class PDBInput:
-    mmcif_filepath: str
+    mmcif_filepath: Optional[Biomolecule] = None
+    biomol: Optional[Biomolecule] = None
     msa_dir: str | None = None
     templates_dir: str | None = None
     add_atom_ids: bool = False
@@ -1086,12 +1087,19 @@ class PDBInput:
 
     def __post_init__(self):
         """Run post-init checks."""
-        if not os.path.exists(self.mmcif_filepath):
-            raise FileNotFoundError(f"mmCIF file not found: {self.mmcif_filepath}.")
-        if not self.mmcif_filepath.endswith(".cif"):
-            raise ValueError(
-                f"mmCIF file `{self.mmcif_filepath}` must have a `.cif` file extension."
-            )
+
+        if self.mmcif_filepath is not None:
+            if not os.path.exists(self.mmcif_filepath):
+                raise FileNotFoundError(f"mmCIF file not found: {self.mmcif_filepath}.")
+            if not self.mmcif_filepath.endswith(".cif"):
+                raise ValueError(
+                    f"mmCIF file `{self.mmcif_filepath}` must have a `.cif` file extension."
+                )
+        elif self.biomol is None:
+
+            raise ValueError("mmCIF file or biomol must be provided.")
+
+
 
         if self.msa_dir is not None and not os.path.exists(self.msa_dir):
             raise FileNotFoundError(f"Provided MSA directory not found: {self.msa_dir}.")
@@ -1537,26 +1545,32 @@ def find_mismatched_symmetry(
 
 
 @typecheck
-def pdb_input_to_molecule_input(pdb_input: PDBInput) -> MoleculeInput:
+def pdb_input_to_molecule_input(pdb_input: Optional[PDBInput] = None, biomol: Optional[Biomolecule] = None) -> MoleculeInput:
     """Convert a PDBInput to a MoleculeInput."""
-    i = pdb_input
+    if pdb_input is not None:
+        i = pdb_input
+        
+        # construct a `Biomolecule` object from the input PDB mmCIF file
 
-    # construct a `Biomolecule` object from the input PDB mmCIF file
+        filepath = pdb_input.mmcif_filepath
+        file_id = os.path.splitext(os.path.basename(filepath))[0]
+        assert os.path.exists(filepath), f"PDB input file `{filepath}` does not exist."
+        
+        mmcif_object = mmcif_parsing.parse_mmcif_object(
+            filepath=filepath,
+            file_id=file_id,
+        )
 
-    filepath = pdb_input.mmcif_filepath
-    file_id = os.path.splitext(os.path.basename(filepath))[0]
-    assert os.path.exists(filepath), f"PDB input file `{filepath}` does not exist."
+        biomol = (
+            _from_mmcif_object(mmcif_object)
+            if "assembly" in file_id
+            else get_assembly(_from_mmcif_object(mmcif_object))
+        )
 
-    mmcif_object = mmcif_parsing.parse_mmcif_object(
-        filepath=filepath,
-        file_id=file_id,
-    )
-
-    biomol = (
-        _from_mmcif_object(mmcif_object)
-        if "assembly" in file_id
-        else get_assembly(_from_mmcif_object(mmcif_object))
-    )
+    elif biomol is not None:
+        #get biomol from the pdb_input
+        i=biomol
+        biomol=i.biomol
 
     # retrieve features directly available within the `Biomolecule` object
 
@@ -1962,13 +1976,15 @@ class DatasetWithReturnedIndex(Dataset):
 
 # PDB dataset that returns a PDBInput based on folder
 
-
 class PDBDataset(Dataset):
     """A PyTorch Dataset for PDB mmCIF files."""
 
     def __init__(
         self,
         folder: str | Path,
+        sampler: WeightedPDBSampler,
+        sample_type: str = None,
+        crop_size: int = None,
         training: bool | None = None,  # extra training flag placed by Alex on PDBInput
         **pdb_input_kwargs,
     ):
@@ -1976,13 +1992,13 @@ class PDBDataset(Dataset):
             folder = Path(folder)
 
         assert folder.exists() and folder.is_dir()
-
-        self.folder = folder
+        self.sampler = sampler
         self.files = [*folder.glob("**/*.cif")]
-        self.filename_to_index = {path.stem: ind for ind, path in enumerate(self.files)}
 
         self.pdb_input_kwargs = pdb_input_kwargs
         self.training = training
+        self.crop_size= crop_size
+        self.sample_type = sample_type
 
     def __len__(self):
         """Return the number of PDB mmCIF files in the dataset."""
@@ -1991,17 +2007,44 @@ class PDBDataset(Dataset):
     def __getitem__(self, idx: int) -> PDBInput:
         """Return a PDBInput object for the specified index."""
         kwargs = self.pdb_input_kwargs
-
         if exists(self.training):
             kwargs = {**kwargs, "training": self.training}
 
-        if isinstance(idx, str):
-            assert (
-                idx in self.filename_to_index
-            ), f"PDB ID ({idx}) not found in folder {str(self.folder)}"
-            idx = self.filename_to_index[idx]
+        if self.sample_type == "clustered":
+            sampled_ids = self.sampler.cluster_based_sample(self.sampler.batch_size)
+        else:
+            sampled_ids = self.sampler.sample(self.sampler.batch_size)
 
-        pdb_input = PDBInput(str(self.files[idx]), **kwargs)
+        pdb_id, chain_id_1, chain_id_2 = sampled_ids[idx]
+
+        #get file for sampled mmcif
+        mmcif_file = next((file for file in self.files if pdb_id in file.name), None)
+
+        if mmcif_file is None:
+            raise FileNotFoundError(f"mmCIF file for PDB ID {pdb_id} not found.")
+
+        with open(mmcif_file, "r") as f:
+            mmcif_string = f.read()
+
+        parsing_result = mmcif_parsing.parse(
+            file_id=pdb_id,
+            mmcif_string=mmcif_string,
+            auth_chains=True,
+            auth_residues=True,
+        )
+
+        if parsing_result.mmcif_object is None:
+            raise ValueError(f"Failed to parse mmCIF file for PDB ID {pdb_id}. {parsing_result.errors}")
+       
+        if self.crop_size is not None:
+            biomol = _from_mmcif_object(parsing_result.mmcif_object)
+            subset_chain_ids = set(filter(None, [chain_id_1, chain_id_2]))  
+            filtered_biomol = biomol.subset_chains(subset_chain_ids)
+            cropped_biomol = filtered_biomol.crop(n_res=self.crop_size)
+
+            pdb_input = PDBInput(biomol=cropped_biomol, **kwargs)
+        else:
+            pdb_input = PDBInput(mmcif_filepath=str(self.files[idx]), **kwargs)
 
         return pdb_input
 
