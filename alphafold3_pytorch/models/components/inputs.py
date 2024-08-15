@@ -34,8 +34,8 @@ from alphafold3_pytorch.common.biomolecule import (
     _from_mmcif_object,
     get_residue_constants,
 )
-from alphafold3_pytorch.data import mmcif_parsing
-from alphafold3_pytorch.data.data_pipeline import get_assembly
+from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
+from alphafold3_pytorch.data.data_pipeline import get_assembly, make_msa_features, make_msa_mask
 from alphafold3_pytorch.data.life import (
     ATOM_BONDS,
     ATOMS,
@@ -2209,6 +2209,21 @@ def find_mismatched_symmetry(
 
     return False
 
+def load_msa_from_msa_dir(msa_dir:str, file_id:str):
+
+    if not os.path.exists(msa_dir):
+        raise FileNotFoundError(f"{msa_dir} does not exists")
+
+    msa_fpath= os.path.join(msa_dir,file_id+".a3m")
+    with open(msa_fpath,'r') as f:
+        msa=f.read()
+    
+    msa=msa_parsing.parse_a3m(msa)
+    features=make_msa_features([msa])
+    msa_mask=make_msa_mask(features)
+
+
+    return features['msa'],msa_mask['msa_mask']
 
 @typecheck
 def pdb_input_to_molecule_input(
@@ -2648,7 +2663,8 @@ def pdb_input_to_molecule_input(
     # TODO: retrieve templates and MSAs for each chain once available
     # msa, msa_mask = load_msa_from_msa_dir(i.msa_dir)
     # templates, template_mask = load_templates_from_templates_dir(i.templates_dir)
-    msa, msa_mask = None, None
+    msa, msa_mask = load_msa_from_msa_dir(i.msa_dir,file_id)
+    msa=torch.from_numpy(msa)
     templates, template_mask = None, None
 
     # construct atom positions from template molecules after instantiating their 3D conformers

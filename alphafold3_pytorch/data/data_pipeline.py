@@ -1,18 +1,19 @@
 """General-purpose data pipeline."""
 
 import os
-from typing import MutableMapping, Optional, Tuple
+from typing import MutableMapping, Optional, Tuple, Sequence
 
 import numpy as np
-
+import torch
 from alphafold3_pytorch.common.biomolecule import (
     Biomolecule,
     _from_mmcif_object,
     to_mmcif,
 )
-from alphafold3_pytorch.data import mmcif_parsing
+from alphafold3_pytorch.data import mmcif_parsing, msa_parsing
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.common import amino_acid_constants
 
 FeatureDict = MutableMapping[str, np.ndarray]
 
@@ -26,6 +27,55 @@ def make_sequence_features(sequence: str, description: str) -> FeatureDict:
     features["sequence"] = np.array([sequence.encode("utf-8")], dtype=object)
     return features
 
+def make_msa_mask(protein):
+    """From https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/data_transforms.py#L379
+        Openfold Mask features are all ones, but will later be zero-padded."""
+    #get a seqlen mask
+    protein["msa_mask"] = torch.ones(protein["msa"].shape[1], dtype=torch.float32)
+    protein["msa_row_mask"] = torch.ones(
+        (protein["msa"].shape[0]), dtype=torch.float32
+    )
+    return protein
+
+def make_msa_features(msas: dict) -> FeatureDict:
+    """From https://github.com/aqlaboratory/openfold/blob/6f63267114435f94ac0604b6d89e82ef45d94484/openfold/data/data_pipeline.py#L224
+        Constructs a feature dict of MSA features."""
+    if not msas:
+        raise ValueError("At least one MSA must be provided.")
+
+    int_msa = []
+    deletion_matrix = []
+    species_ids = []
+    seen_sequences = set()
+    for msa_index, msa in enumerate(msas):
+        if not msa:
+            raise ValueError(
+                f"MSA {msa_index} must contain at least one sequence."
+            )
+        for sequence_index, sequence in enumerate(msa.sequences):
+            if sequence in seen_sequences:
+                continue
+            seen_sequences.add(sequence)
+            int_msa.append(
+                [amino_acid_constants.HHBLITS_AA_TO_ID[res] for res in sequence]
+            )
+
+            deletion_matrix.append(msa.deletion_matrix[sequence_index])
+            identifiers = msa_parsing.get_identifiers(
+                msa.descriptions[sequence_index]
+            )
+            species_ids.append(identifiers.species_id.encode('utf-8'))
+
+    num_res = len(msas[0].sequences[0])
+    num_alignments = len(int_msa)
+    features = {}
+    features["deletion_matrix_int"] = np.array(deletion_matrix, dtype=np.int32)
+    features["msa"] = np.array(int_msa, dtype=np.int32)
+    features["num_alignments"] = np.array(
+        [num_alignments] * num_res, dtype=np.int32
+    )
+    features["msa_species_identifiers"] = np.array(species_ids, dtype=object)
+    return features
 
 def get_assembly(biomol: Biomolecule, assembly_id: Optional[str] = None) -> Biomolecule:
     """Get a specified (Biomolecule) assembly of a given Biomolecule.
