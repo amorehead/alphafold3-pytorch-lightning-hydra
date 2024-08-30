@@ -38,10 +38,13 @@ RUN pip install pytest \
     biopandas --no-cache-dir
 
 WORKDIR /app/alphafold
-RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
+
+RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed before installing the project. "
 
 ## Clone and install the package + requirements
 ARG GIT_TAG=rocm
 RUN git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra . --branch ${GIT_TAG} \
-    && pip install .
-RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
+    && pip install . \
+    && pip uninstall -y torch torchvision
+
+RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed after installing the project. "
