@@ -41,8 +41,7 @@ WORKDIR /app/alphafold
 RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
 
 ## Clone and install the package + requirements
-ARG GIT_TAG=main
-RUN git clone https://github.com/gbouras13/alphafold3-pytorch-lightning-hydra . --branch ${GIT_TAG} \
-    # && git checkout main \
+ARG GIT_TAG=rocm
+RUN git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra . --branch ${GIT_TAG} \
     && pip install .
 RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
