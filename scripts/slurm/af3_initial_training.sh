@@ -6,7 +6,7 @@
 #SBATCH --nodes=1                                             # NOTE: this needs to match Lightning's `Trainer(num_nodes=...)`
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-24:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
-#SBATCH --job-name=af3_overfitting_e4_bs1                     # job name
+#SBATCH --job-name=af3_initial_training                       # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --exclusive                                           # request exclusive node access
@@ -44,7 +44,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="hs3s6l97"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="n59gbppe"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -63,7 +63,7 @@ srun -c 64 singularity exec \
         --rdzv_backend=c10d \
         --rdzv_endpoint=$RDZV_HOST:$RDZV_PORT \
         alphafold3_pytorch/train.py \
-        experiment=af3_overfitting_e4_bs1 \
+        experiment=af3_initial_training \
         data.batch_size=$NUM_PYTORCH_PROCESSES \
         trainer.num_nodes=$SLURM_JOB_NUM_NODES \
         trainer.devices=$NUM_PYTORCH_PROCESSES

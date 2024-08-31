@@ -15,21 +15,31 @@ defaults:
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["pdb", "alphafold3", "initial_training", "full_dataset", "batch_size_1"]
+tags: ["pdb", "alphafold3", "initial_training", "full_dataset"]
 
 seed: 12345
 
 # initial training experiment parameters:
+
+data:
+  crop_size: 384
 
 logger:
   wandb:
     entity: bml-lab
     group: "af3-training"
     tags: ${tags}
-    name: bs1-${now:%Y%m%d%H%M%S}
+    name: ${now:%Y%m%d%H%M%S}
 
 model:
+  parameters_initialized_from: random
+  train_structure_and_distogram: true
+  train_pae_head: false
+  diffusion_add_smooth_lddt_loss: true
+  diffusion_add_bond_loss: false
   net:
+    pdb_training_set: true
+    diffusion_num_augmentations: 48
     dim_single: 192
     dim_pairwise: 64
     dim_token: 192
