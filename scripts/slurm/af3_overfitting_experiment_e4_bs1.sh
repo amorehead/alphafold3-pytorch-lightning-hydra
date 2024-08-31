@@ -14,8 +14,8 @@
 #################################################################
 
 # Load required modules
-module load pawseyenv/2023.08
 module load pytorch/2.2.0-rocm5.7.3
+module load pawseyenv/2023.08
 # NOTE: The following module swap is needed due to a PyTorch module bug
 module load singularity/3.11.4-nohost
 
@@ -54,8 +54,9 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        CONDA_PREFIX=/opt/miniforge3 \
+        python3 -m pip install hydra-core==1.3.2 && \
+        cd /alphafold3-pytorch-lightning-hydra && \
+        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID CONDA_PREFIX=/opt/miniforge3 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
