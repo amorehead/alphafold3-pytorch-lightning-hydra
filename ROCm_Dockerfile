@@ -1,7 +1,7 @@
 FROM quay.io/pawsey/pytorch:2.2.0-rocm5.7.3
 
 ## Add System Dependencies
-# needs libxrender1 ImportError: libXrender.so.1: cannot open shared object file: No such file or directory (from pdbeccdutils.core import ccd_reader) throws the error
+# NOTE: Needs libxrender1 ImportError: libXrender.so.1: cannot open shared object file: No such file or directory (from pdbeccdutils.core import ccd_reader) throws the error
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive \
     && apt-get install --no-install-recommends -y \
@@ -9,28 +9,17 @@ RUN apt-get update \
         git \
         wget \
         libxrender1 \
+        kalign \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get autoremove -y \
     && apt-get clean
 
-## ROCm environment variables
+## Set ROCm environment variables
 ENV ROCM_RELEASE=5.7.3
 ENV ROCM_PATH=opt/rocm-$ROCM_RELEASE
 ENV PATH=$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROCM_PATH/lib
-
-## Install miniforge
-# install into
-RUN set -eux ; \
-  curl -LO https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh ; \
-  bash ./Miniforge3-* -b -p /opt/miniforge3 -s ; \
-  rm -rf ./Miniforge3-*
-ENV PATH=/opt/miniforge3/bin:$PATH
-
-## install pip
-RUN set -eux ; \
-  mamba install -y -c conda-forge -c bioconda -c defaults pip kalign2 mmseqs2
 
 ## Install some Python dependencies
 RUN pip install pytest \
@@ -39,12 +28,25 @@ RUN pip install pytest \
 
 WORKDIR /app/alphafold
 
-RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed before installing the project. "
+RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
 
 ## Clone and install the package + requirements
 ARG GIT_TAG=rocm
 RUN git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra . --branch ${GIT_TAG} \
-    && pip install . \
-    && pip uninstall -y torch torchvision
+    && pip install .
 
-RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed after installing the project. "
+RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
+
+# Check kalign
+RUN kalign -h
+
+# Install MMseqs2
+RUN wget https://mmseqs.com/latest/mmseqs-linux-avx2.tar.gz \
+    && tar xvfz mmseqs-linux-avx2.tar.gz
+
+ENV MMSEQS_PATH=/app/alphafold/mmseqs
+ENV PATH=$MMSEQS_PATH/bin:$PATH
+
+RUN pwd
+RUN ls /app/alphafold/mmseqs/bin
+RUN mmseqs -h
