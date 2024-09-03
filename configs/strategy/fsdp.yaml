@@ -1,17 +1,15 @@
 _target_: lightning.pytorch.strategies.FSDPStrategy
-cpu_offload: null
-auto_wrap_policy: null
-activation_checkpointing_policy: null
-# auto_wrap_policy: ${resolve_classes:alphafold3_pytorch.models.components.alphafold3,[DiffusionTransformer,PairformerStack,DistogramHead]}
-# activation_checkpointing_policy: ${resolve_classes:alphafold3_pytorch.models.components.alphafold3,[DiffusionTransformer,PairformerStack,DistogramHead]}
+cpu_offload: true
+auto_wrap_policy: ${resolve_classes:alphafold3_pytorch.models.components.alphafold3,[DiffusionTransformer,PairformerStack,DistogramHead,MSAModule,TemplateEmbedder]}
+activation_checkpointing_policy: ${resolve_classes:alphafold3_pytorch.models.components.alphafold3,[DiffusionTransformer,PairformerStack,DistogramHead,MSAModule,TemplateEmbedder]}
 sharding_strategy: FULL_SHARD # NOTE: must be one of (`FULL_SHARD`: Shard weights, gradients, optimizer state (1 + 2 + 3), `SHARD_GRAD_OP`: Shard gradients, optimizer state (2 + 3), `HYBRID_SHARD`: Full-shard within a machine, replicate across machines, `NO_SHARD`: Don't shard anything (similar to DDP))
 state_dict_type: full # NOTE: must be one of (`full`: The full weights and optimizer states get assembled on rank 0 and saved to a single file, `sharded`: Each rank saves its shard of weights and optimizer states to a file)
 device_mesh: null # NOTE: only valid in combination with the `HYBRID_SHARD` sharding strategy
 # mixed_precision:
 #   _target_: torch.distributed.fsdp.MixedPrecision
-#   param_dtype: null
-#   reduce_dtype: null
-#   buffer_dtype: null
+#   param_dtype: torch.float16
+#   reduce_dtype: torch.float16
+#   buffer_dtype: torch.float16
 #   keep_low_precision_grads: false
-#   cast_forward_inputs: false
+#   cast_forward_inputs: true
 #   cast_root_forward_inputs: true

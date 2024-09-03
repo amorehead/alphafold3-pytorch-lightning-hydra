@@ -1,42 +1,45 @@
 # @package _global_
 
-# lists the experiment parameters corresponding to "Initial training" in Table 6 of the paper
+# lists the experiment parameters corresponding to an "Overfitting Experiment" with one training example and batch size of one
 
 # to execute this experiment run:
-# python train.py experiment=af3_initial_training
+# python train.py experiment=af3_overfitting_e1_bs1
 
 defaults:
   - override /callbacks: default
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
-  - override /trainer: deepspeed
+  - override /trainer: default
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["pdb", "alphafold3", "initial_training", "full_dataset"]
+tags: ["pdb", "alphafold3", "overfitting", "7a4d", "batch_size_1"]
 
 seed: 12345
 
-# initial training experiment parameters:
+# overfitting experiment parameters:
 
 data:
-  crop_size: 384
+  max_msas_per_chain: 128
+  max_templates_per_chain: 20
+  num_templates_per_chain: 4
+  batch_size: 1
+  overfitting_train_examples: true
+  sample_only_pdb_ids: [7a4d-assembly1]
 
 logger:
   wandb:
     entity: bml-lab
-    group: "af3-training"
+    group: "af3-overfitting-experiments"
     tags: ${tags}
-    name: ${now:%Y%m%d%H%M%S}
+    name: e1-bs1-${now:%Y%m%d%H%M%S}
 
 model:
-  parameters_initialized_from: random
-  train_structure_and_distogram: true
-  train_pae_head: false
   diffusion_add_smooth_lddt_loss: true
-  diffusion_add_bond_loss: false
+  diffusion_add_bond_loss: true
+  visualize_val_samples_every_n_steps: 1
   net:
     dim_atom: 8
     dim_single: 8
@@ -57,7 +60,7 @@ model:
       depth: 1
       dim_msa: 8
     pairformer_stack:
-      depth: 8
+      depth: 1
       pair_bias_attn_dim_head: 4
       pair_bias_attn_heads: 2
     diffusion_module_kwargs:
@@ -72,4 +75,11 @@ model:
           dim_head: 4
 
 trainer:
+  min_steps: null
+  max_steps: -1
+  min_epochs: 1 # NOTE: prevents early stopping
+  max_epochs: 20000
+  check_val_every_n_epoch: null
+  val_check_interval: 50
+  log_every_n_steps: 1
   precision: bf16-mixed

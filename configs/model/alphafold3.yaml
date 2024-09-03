@@ -14,7 +14,7 @@ scheduler:
   verbose: true
 
 net:
-  _target_: alphafold3_pytorch.models.components.alphafold3.Alphafold3
+  target: ${resolve_variable:alphafold3_pytorch.models.components.alphafold3.Alphafold3}
   dim_atom_inputs: 3
   dim_template_feats: 108
   num_dist_bins: 38

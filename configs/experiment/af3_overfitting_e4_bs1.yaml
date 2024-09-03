@@ -10,7 +10,7 @@ defaults:
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
-  - override /trainer: fsdp
+  - override /trainer: deepspeed
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
@@ -52,11 +52,32 @@ model:
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
   net:
+    dim_atom: 64
     dim_single: 192
     dim_pairwise: 64
     dim_token: 192
+    diffusion_num_augmentations: 12
+
+    checkpoint_trunk_pairformer: false
+    checkpoint_distogram_head: false
+    checkpoint_confidence_head: false
+    checkpoint_diffusion_token_transformer: false
+
+    confidence_head_kwargs:
+      pairformer_depth: 1
+    template_embedder_kwargs:
+      pairformer_stack_depth: 1
+    msa_module_kwargs:
+      depth: 1
+      dim_msa: 32
     pairformer_stack:
-      depth: 24
+      depth: 1
+      pair_bias_attn_dim_head: 32
+      pair_bias_attn_heads: 8
+    diffusion_module_kwargs:
+      atom_encoder_depth: 1
+      token_transformer_depth: 1
+      atom_decoder_depth: 1
 
 trainer:
   min_steps: null
@@ -66,4 +87,4 @@ trainer:
   check_val_every_n_epoch: null
   val_check_interval: 50
   log_every_n_steps: 1
-  gradient_clip_val: 0 # NOTE: indicates no clipping is performed, to work around FSDP's clipping limitations
+  precision: bf16-mixed

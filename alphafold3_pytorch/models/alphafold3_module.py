@@ -1,9 +1,11 @@
 import os
+import time
 from typing import Any, Dict, List, Literal, Tuple
 
 import rootutils
 import torch
 from lightning import LightningModule
+from lightning.pytorch.utilities.memory import garbage_collection_cuda
 from torch import Tensor
 from torchmetrics import MaxMetric, MeanMetric
 
@@ -64,7 +66,6 @@ class Alphafold3LitModule(LightningModule):
 
     def __init__(
         self,
-        net: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
         compile: bool,
@@ -75,9 +76,8 @@ class Alphafold3LitModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
 
-        self.save_hyperparameters(ignore=["net"], logger=False)
-
-        self.net = net
+        self.net = None
+        self.save_hyperparameters(logger=False)
 
         # for averaging loss across batches
 
@@ -148,13 +148,16 @@ class Alphafold3LitModule(LightningModule):
         return loss, loss_breakdown
 
     @typecheck
-    def training_step(self, batch: BatchedAtomInput, batch_idx: int) -> Tensor:
+    def training_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> Tensor:
         """Perform a single training step on a batch of data from the training set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
+        if not exists(batch):
+            return torch.tensor(0.0)
+
         loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
@@ -163,14 +166,14 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "train/loss",
             self.train_loss,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=False,
             batch_size=len(batch.atom_inputs),
@@ -187,12 +190,15 @@ class Alphafold3LitModule(LightningModule):
         return loss
 
     @typecheck
-    def validation_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
+    def validation_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
         """Perform a single validation step on a batch of data from the validation set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
+        if not exists(batch):
+            return
+
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
@@ -258,7 +264,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -268,7 +274,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "val/top_ranked_lddt",
             self.val_top_ranked_lddt,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -314,13 +320,19 @@ class Alphafold3LitModule(LightningModule):
             prog_bar=True,
         )
 
+        # free up GPU memory
+        garbage_collection_cuda()
+
     @typecheck
-    def test_step(self, batch: BatchedAtomInput, batch_idx: int) -> None:
+    def test_step(self, batch: BatchedAtomInput | None, batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
 
         :param batch: A batch of `AtomInput` data.
         :param batch_idx: The index of the current batch.
         """
+        if not exists(batch):
+            return
+
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
@@ -390,7 +402,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -400,7 +412,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "test/top_ranked_lddt",
             self.test_top_ranked_lddt,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=len(batch.atom_inputs),
@@ -469,9 +481,11 @@ class Alphafold3LitModule(LightningModule):
             )
 
             example_atom_mask = atom_mask[b]
-            sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].cpu().numpy()
+            sampled_atom_positions = sampled_atom_pos[b][example_atom_mask].float().cpu().numpy()
             example_b_factors = (
-                b_factors[b][example_atom_mask].cpu().numpy() if exists(b_factors) else None
+                b_factors[b][example_atom_mask].float().cpu().numpy()
+                if exists(b_factors)
+                else None
             )
 
             mmcif_writing.write_mmcif_from_filepath_and_id(
@@ -572,6 +586,22 @@ class Alphafold3LitModule(LightningModule):
         """
         if self.hparams.compile and stage == "fit":
             self.net = torch.compile(self.net)
+
+    def configure_model(self):
+        """Configure the model to be used for training, validation, testing, or prediction.
+
+        :return: The configured model.
+        """
+        if exists(self.net):
+            return
+
+        if exists(self.trainer):
+            sleep = self.trainer.global_rank * 4
+            log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")
+            time.sleep(sleep)
+
+        net_config = {k: v for k, v in self.hparams.net.items() if k != "target"}
+        self.net = self.hparams.net["target"](**net_config)
 
     def configure_optimizers(self):
         """Choose what optimizers and optional learning-rate schedulers to use during model

@@ -244,6 +244,7 @@ dependencies:
       - alembic==1.13.1
       - annotated-types==0.7.0
       - antlr4-python3-runtime==4.9.3
+      - anyio==4.4.0
       - appdirs==1.4.4
       - asttokens==2.4.1
       - async-timeout==4.0.3
@@ -266,12 +267,14 @@ dependencies:
       - debugpy==1.8.1
       - decorator==5.1.1
       - deepdiff==7.0.1
+      - deepspeed==0.15.0
       - distlib==0.3.8
       - easydev==0.13.2
       - einops==0.8.0
       - einx==0.2.2
       - exceptiongroup==1.2.1
       - executing==2.0.1
+      - fastapi==0.112.2
       - filelock==3.13.1
       - fonttools==4.52.4
       - frame-averaging-pytorch==0.0.19
@@ -281,6 +284,7 @@ dependencies:
       - gemmi==0.6.6
       - gevent==24.2.1
       - grequests==0.7.0
+      - hjson==3.1.0
       - huggingface-hub==0.23.4
       - hydra-colorlog==1.2.0
       - hydra-core==1.3.2
@@ -314,8 +318,10 @@ dependencies:
       - multipledispatch==1.0.0
       - nest-asyncio==1.6.0
       - networkx==3.2.1
+      - ninja==1.11.1.1
       - nodeenv==1.8.0
       - numpy==1.23.5
+      - nvidia-ml-py==12.560.30
       - omegaconf==2.3.0
       - optree==0.11.0
       - optuna==2.10.1
@@ -336,6 +342,7 @@ dependencies:
       - psutil==5.9.8
       - ptyprocess==0.7.0
       - pure-eval==0.2.2
+      - py-cpuinfo==9.0.0
       - pydantic==2.8.2
       - pydantic-core==2.20.1
       - pygments==2.18.0
@@ -356,8 +363,10 @@ dependencies:
       - seaborn==0.13.2
       - sh==2.0.7
       - shortuuid==1.0.13
+      - sniffio==1.3.1
       - soupsieve==2.5
       - stack-data==0.6.3
+      - starlette==0.38.4
       - stevedore==5.2.0
       - suds-community==1.1.2
       - taylor-series-linear-attention==0.1.12
@@ -376,7 +385,7 @@ dependencies:
       - typing-extensions==4.9.0
       - url-normalize==1.4.3
       - virtualenv==20.26.2
-      - wandb==0.17.7
+      - wandb==0.16.6
       - wget==3.2
       - wrapt==1.16.0
       - xarray==2024.3.0

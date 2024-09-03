@@ -35,7 +35,7 @@ def collate_inputs_to_batched_atom_input(
     int_pad_value=-1,
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
-) -> BatchedAtomInput:
+) -> BatchedAtomInput | None:
     """Collate function for a list of AtomInput objects.
 
     :param inputs: A list of AtomInput objects.
@@ -51,6 +51,8 @@ def collate_inputs_to_batched_atom_input(
     # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
     atom_inputs = maybe_transform_to_atom_inputs(inputs)
+    if not atom_inputs:
+        return None
 
     # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
 
@@ -326,16 +328,16 @@ class PDBDataModule(LightningDataModule):
         """
         # Divide batch size by the number of devices.
         if self.trainer is not None:
-            if self.hparams.batch_size > 1:
-                raise RuntimeError(
-                    "Only a `batch_size` of 1 is supported for now "
-                    "due to the input requirements of the `MultiChainPermutationAlignment` algorithm."
-                )
             if self.hparams.batch_size % self.trainer.world_size != 0:
                 raise RuntimeError(
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."
                 )
             self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
+            if self.batch_size_per_device > 1:
+                raise RuntimeError(
+                    "Only a `batch_size_per_device` of 1 is supported for now "
+                    "due to the input requirements of the `MultiChainPermutationAlignment` algorithm."
+                )
 
         # load dataset splits only if not loaded already
         if not self.data_train and not self.data_val and not self.data_test:
@@ -345,6 +347,9 @@ class PDBDataModule(LightningDataModule):
                 set(self.hparams.sample_only_pdb_ids)
                 if exists(self.hparams.sample_only_pdb_ids)
                 else None
+            )
+            sample_only_pdb_ids_list = (
+                list(sample_only_pdb_ids) if exists(sample_only_pdb_ids) else None
             )
 
             # data paths for each split
@@ -419,7 +424,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.train_chain_mapping_paths,
                     interface_mapping_path=self.train_interface_mapping_path,
                     batch_size=1,
-                    pdb_ids_to_keep=list(sample_only_pdb_ids),
+                    pdb_ids_to_keep=sample_only_pdb_ids_list,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -444,7 +449,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.val_chain_mapping_paths,
                     interface_mapping_path=self.val_interface_mapping_path,
                     batch_size=1,
-                    pdb_ids_to_keep=list(sample_only_pdb_ids),
+                    pdb_ids_to_keep=sample_only_pdb_ids_list,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
@@ -469,7 +474,7 @@ class PDBDataModule(LightningDataModule):
                     chain_mapping_paths=self.test_chain_mapping_paths,
                     interface_mapping_path=self.test_interface_mapping_path,
                     batch_size=1,
-                    pdb_ids_to_keep=list(sample_only_pdb_ids),
+                    pdb_ids_to_keep=sample_only_pdb_ids_list,
                 ),
                 sample_type=self.hparams.sample_type,
                 contiguous_weight=self.hparams.contiguous_weight,
