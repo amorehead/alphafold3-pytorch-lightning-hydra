@@ -26,6 +26,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.utilities.exceptions import MisconfigurationException
 from lightning.pytorch.utilities.rank_zero import rank_zero_info
 
+from alphafold3_pytorch.utils.utils import exists
+
 
 class EMA(Callback):
     """Implements Exponential Moving Averaging (EMA).
@@ -349,7 +351,8 @@ class EMAOptimizer(torch.optim.Optimizer):
 
     def __getattr__(self, name):
         """Forward all other attribute calls to the optimizer."""
-        return getattr(self.optimizer, name)
+        attr = getattr(self.optimizer, name)
+        return attr if exists(attr) else ({} if name == "defaults" else None)
 
     def join(self):
         """Wait for the update to complete."""
