@@ -22,5 +22,5 @@ shuffle_train_val_test_subsets: True # NOTE: this is only referenced if `train_v
 overfitting_train_examples: false # NOTE: if true, overfit to the training dataset by treating it also as the validation and test datasets
 sample_only_pdb_ids: null # if specified, a subset of  PDB IDs to sample from the training, validation, or testing sets
 batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
-num_workers: 0
+num_workers: 7
 pin_memory: False

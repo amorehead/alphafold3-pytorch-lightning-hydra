@@ -54,6 +54,7 @@ dependencies = [
     "biopython>=1.83", # for biological data parsing
     "click",           # for command line interfaces
     "CoLT5-attention>=0.11.0", # for CoLT5 attention
+    "deepspeed @ git+https://github.com/amorehead/DeepSpeed.git@v0.15.0", # for distributed training
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
     "environs",        # for environment variable parsing
@@ -97,9 +98,6 @@ test = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.poetry.dependencies]
-deepspeed = { git = "https://github.com/amorehead/DeepSpeed.git", rev = "v0.15.0" }
 
 [tool.pytest.ini_options]
 pythonpath = [
