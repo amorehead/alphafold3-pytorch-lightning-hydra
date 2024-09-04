@@ -37,6 +37,14 @@ model:
   train_pae_head: false
   diffusion_add_smooth_lddt_loss: true
   diffusion_add_bond_loss: false
+
+  optimizer:
+    _target_: deepspeed.ops.adam.DeepSpeedCPUAdam
+    _partial_: true
+    lr: 1.8e-3
+    betas: [0.9, 0.95]
+    eps: 1e-8
+
   net:
     dim_atom: 8
     dim_single: 8
@@ -44,10 +52,11 @@ model:
     dim_token: 8
     diffusion_num_augmentations: 4
 
-    checkpoint_trunk_pairformer: false
+    checkpoint_input_embedding: true
+    checkpoint_trunk_pairformer: true
     checkpoint_distogram_head: false
     checkpoint_confidence_head: false
-    checkpoint_diffusion_token_transformer: false
+    checkpoint_diffusion_token_transformer: true
 
     confidence_head_kwargs:
       pairformer_depth: 1

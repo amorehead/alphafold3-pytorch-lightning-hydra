@@ -351,8 +351,7 @@ class EMAOptimizer(torch.optim.Optimizer):
 
     def __getattr__(self, name):
         """Forward all other attribute calls to the optimizer."""
-        attr = getattr(self.optimizer, name)
-        return attr if exists(attr) else ({} if name == "defaults" else None)
+        return getattr(self.optimizer, name)
 
     def join(self):
         """Wait for the update to complete."""

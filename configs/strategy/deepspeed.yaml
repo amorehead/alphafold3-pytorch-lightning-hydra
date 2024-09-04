@@ -1,8 +1,9 @@
 _target_: lightning.pytorch.strategies.DeepSpeedStrategy
 zero_optimization: true
-stage: 2
+stage: 3
 allgather_bucket_size: 5e8
 reduce_bucket_size: 5e8
-offload_optimizer: false
-offload_parameters: false
-cpu_checkpointing: false
+offload_optimizer: true
+offload_parameters: true
+partition_activations: true
+cpu_checkpointing: true

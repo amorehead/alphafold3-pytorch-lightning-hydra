@@ -51,6 +51,14 @@ model:
   diffusion_add_smooth_lddt_loss: true
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
+
+  optimizer:
+    _target_: deepspeed.ops.adam.DeepSpeedCPUAdam
+    _partial_: true
+    lr: 1.8e-3
+    betas: [0.9, 0.95]
+    eps: 1e-8
+
   net:
     dim_atom: 64
     dim_single: 192
@@ -58,10 +66,11 @@ model:
     dim_token: 192
     diffusion_num_augmentations: 12
 
-    checkpoint_trunk_pairformer: false
-    checkpoint_distogram_head: false
-    checkpoint_confidence_head: false
-    checkpoint_diffusion_token_transformer: false
+    checkpoint_input_embedding: true
+    checkpoint_trunk_pairformer: true
+    checkpoint_distogram_head: true
+    checkpoint_confidence_head: true
+    checkpoint_diffusion_token_transformer: true
 
     confidence_head_kwargs:
       pairformer_depth: 1
@@ -78,6 +87,12 @@ model:
       atom_encoder_depth: 1
       token_transformer_depth: 1
       atom_decoder_depth: 1
+      atom_encoder_kwargs:
+        attn_pair_bias_kwargs:
+          dim_head: 4
+      atom_decoder_kwargs:
+        attn_pair_bias_kwargs:
+          dim_head: 4
 
 trainer:
   min_steps: null

@@ -44,7 +44,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="pdg3rtre"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="95dymt2y"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -55,9 +55,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        CONDA_PREFIX=/opt/miniforge3 \
-        TYPECHECK=False DEBUG=False \
-        CUDA_HOME=/usr/local/cuda \
+        CONDA_PREFIX=/opt/miniforge3 CUDA_HOME=/usr/local/cuda \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \

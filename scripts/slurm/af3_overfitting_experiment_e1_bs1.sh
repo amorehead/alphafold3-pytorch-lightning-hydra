@@ -32,7 +32,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="8qnn9fqs"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="gpahl8v8"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
@@ -43,9 +43,7 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        CONDA_PREFIX=/opt/miniforge3 \
-        TYPECHECK=False DEBUG=False \
-        CUDA_HOME=/usr/local/cuda \
+        CONDA_PREFIX=/opt/miniforge3 CUDA_HOME=/usr/local/cuda \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
         data.batch_size=1 \
