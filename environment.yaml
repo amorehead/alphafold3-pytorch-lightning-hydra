@@ -276,6 +276,7 @@ dependencies:
       - easydev==0.13.2
       - einops==0.8.0
       - einx==0.2.2
+      - environs==11.0.0
       - exceptiongroup==1.2.1
       - executing==2.0.1
       - fastapi==0.112.2

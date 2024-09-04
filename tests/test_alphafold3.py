@@ -836,20 +836,11 @@ def test_alphafold3_without_msa_and_templates():
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
-        pairformer_stack=dict(checkpoint=True, depth=2),
+        pairformer_stack=dict(depth=2),
         diffusion_module_kwargs=dict(
             atom_encoder_depth=2,
-            atom_encoder_kwargs=dict(
-                checkpoint=True,
-            ),
             token_transformer_depth=2,
-            token_transformer_kwargs=dict(
-                checkpoint=True,
-            ),
             atom_decoder_depth=2,
-            atom_decoder_kwargs=dict(
-                checkpoint=True,
-            ),
         ),
     )
 

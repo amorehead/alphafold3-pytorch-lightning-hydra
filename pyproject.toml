@@ -54,9 +54,9 @@ dependencies = [
     "biopython>=1.83", # for biological data parsing
     "click",           # for command line interfaces
     "CoLT5-attention>=0.11.0", # for CoLT5 attention
-    "deepspeed==0.15.0",       # for distributed training
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
+    "environs",        # for environment variable parsing
     "fastapi",         # for web APIs
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
     "gemmi>=0.6.6",    # for mmCIF file metadata parsing
@@ -65,7 +65,7 @@ dependencies = [
     "jaxtyping>=0.2.28",  # tensor type checking
     "joblib",          # for parallel processing
     "lion-pytorch",    # for optimization with Lion
-    "numpy",           # for numerical operations
+    "numpy==1.23.5",           # for numerical operations
     "pandas>=1.5.3",   # for data parsing and analysis
     "pdbeccdutils==0.8.5", # for parsing the Protein Data Bank's Chemical Component Dictionary (CCD)
     "polars>=1.1.0",   # for faster data parsing and analysis
@@ -97,6 +97,9 @@ test = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.poetry.dependencies]
+deepspeed = { git = "https://github.com/amorehead/DeepSpeed.git", rev = "v0.15.0" }
 
 [tool.pytest.ini_options]
 pythonpath = [
