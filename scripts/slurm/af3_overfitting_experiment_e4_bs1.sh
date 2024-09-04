@@ -26,7 +26,7 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.27_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.28_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
 NUM_PYTORCH_PROCESSES=4
