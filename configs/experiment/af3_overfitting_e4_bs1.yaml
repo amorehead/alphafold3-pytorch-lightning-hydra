@@ -52,13 +52,6 @@ model:
   diffusion_add_bond_loss: true
   visualize_val_samples_every_n_steps: 1
 
-  optimizer:
-    _target_: deepspeed.ops.adam.DeepSpeedCPUAdam
-    _partial_: true
-    lr: 1.8e-3
-    betas: [0.9, 0.95]
-    eps: 1e-8
-
   net:
     dim_atom: 64
     dim_single: 192

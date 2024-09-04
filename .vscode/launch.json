@@ -123,7 +123,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "experiment=af3_overfitting_e1_bs1",
+                "experiment=af3_overfitting_e4_bs1",
                 "~callbacks.learning_rate_monitor",
                 "~logger",
                 "~logger.wandb",

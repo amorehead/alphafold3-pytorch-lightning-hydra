@@ -29,10 +29,10 @@ mkdir -p "${MIOPEN_USER_DB_PATH}"
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.28_dev.sif"
 
 # Set the number of threads to be generated for each PyTorch (GPU) process
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="98owlnce"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="72dg5pab"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
@@ -43,6 +43,7 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
+        CONDA_PREFIX=/opt/miniforge3 \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1_bs1 \
         data.batch_size=1 \
