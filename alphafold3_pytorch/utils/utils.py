@@ -129,6 +129,15 @@ def exists(val: Any) -> bool:
     return val is not None
 
 
+def not_exists(val: Any) -> bool:
+    """Check if a value does not exist.
+
+    :param val: The value to check.
+    :return: `True` if the value does not exist, otherwise `False`.
+    """
+    return val is None
+
+
 def default(v: Any, d: Any) -> Any:
     """Return default value `d` if `v` does not exist (i.e., is `None`).
 

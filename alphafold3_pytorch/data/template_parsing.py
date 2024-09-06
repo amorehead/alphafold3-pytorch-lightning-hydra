@@ -23,7 +23,7 @@ from alphafold3_pytorch.utils.data_utils import extract_mmcif_metadata_field
 from alphafold3_pytorch.utils.model_utils import (
     ExpressCoordinatesInFrame,
     RigidFrom3Points,
-    distance_to_bins,
+    distance_to_dgram,
     get_frames_from_atom_pos,
 )
 from alphafold3_pytorch.utils.pylogger import RankedLogger
@@ -123,9 +123,6 @@ def parse_m8(
             template_release_date = extract_mmcif_metadata_field(
                 template_mmcif_object, "release_date"
             )
-            template_biomol = _from_mmcif_object(
-                template_mmcif_object, chain_ids=set(template_chain)
-            )
             if not (
                 exists(template_cutoff_date)
                 and datetime.strptime(template_release_date, "%Y-%m-%d") <= template_cutoff_date
@@ -133,6 +130,9 @@ def parse_m8(
                 continue
             elif not exists(template_cutoff_date):
                 pass
+            template_biomol = _from_mmcif_object(
+                template_mmcif_object, chain_ids=set(template_chain)
+            )
             if len(template_biomol.atom_positions):
                 template_biomols.append((template_biomol, template_type))
         except Exception as e:
@@ -150,7 +150,7 @@ def _extract_template_features(
     query_chemtype: List[str],
     num_restype_classes: int = 32,
     num_distogram_bins: int = 39,
-    distance_bins: List[float] = torch.linspace(3.25, 50.75, 38).float(),
+    distance_bins: List[float] = torch.linspace(3.25, 50.75, 39).float(),
     verbose: bool = False,
 ) -> Dict[str, Any]:
     """Parse atom positions in the target structure and align with the query.
@@ -183,9 +183,9 @@ def _extract_template_features(
         f"Mapping length {len(mapping)} must match query sequence length {len(query_sequence)} "
         f"and query chemtype length {len(query_chemtype)}."
     )
-    assert num_distogram_bins == len(distance_bins) + 1, (
+    assert num_distogram_bins == len(distance_bins), (
         f"Number of distance bins {num_distogram_bins} must match the length of distance bins "
-        f"{len(distance_bins)} plus one."
+        f"{len(distance_bins)}."
     )
 
     all_atom_positions = template_biomol.atom_positions
@@ -369,17 +369,7 @@ def _extract_template_features(
     template_distogram_dist = torch.cdist(
         template_distogram_atom_positions, template_distogram_atom_positions, p=2
     )
-    template_distogram_dist_binned = distance_to_bins(template_distogram_dist, distance_bins)
-
-    template_distogram_dist_binned[
-        # NOTE: This assigns the last bin to distances greater than the maximum bin (e.g., > 50.75 Å).
-        template_distogram_dist
-        > distance_bins.max()
-    ] = (num_distogram_bins - 1)
-
-    template_distogram = F.one_hot(
-        template_distogram_dist_binned, num_classes=num_distogram_bins
-    ).float()
+    template_distogram = distance_to_dgram(template_distogram_dist, distance_bins)
 
     # Construct unit vectors.
     template_unit_vector = torch.zeros(

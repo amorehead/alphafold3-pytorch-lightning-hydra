@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1                                          # NOTE: requests any GPU resource(s)
 #SBATCH --ntasks-per-node=1                                   # NOTE: this needs to be `1` on SLURM clusters when using Lightning's `ddp_spawn` strategy`; otherwise, set to match Lightning's quantity of `Trainer(devices=...)`
 #SBATCH --time 0-04:00:00                                     # time limit for the job (up to 24 hours: `0-24:00:00`)
-#SBATCH --job-name=af3_overfitting_e1_bs1                     # job name
+#SBATCH --job-name=af3_overfitting_e1                         # job name
 #SBATCH --output=J-%x.%j.out                                  # output log file
 #SBATCH --error=J-%x.%j.err                                   # error log file
 #SBATCH --signal=SIGUSR1@90                                   # send SIGUSR1 90 seconds before job end to trigger job resubmission
@@ -32,7 +32,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="72dg5pab"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="kah0gjep"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
@@ -43,9 +43,9 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        CONDA_PREFIX=/opt/miniforge3 \
+        CONDA_PREFIX=/opt/miniforge3 OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
-        experiment=af3_overfitting_e1_bs1 \
+        experiment=af3_overfitting_e1 \
         data.batch_size=1 \
         trainer.num_nodes=1 \
         trainer.devices=1

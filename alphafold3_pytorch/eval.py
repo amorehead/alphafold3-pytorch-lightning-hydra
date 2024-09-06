@@ -41,6 +41,8 @@ from alphafold3_pytorch.utils import (
 
 log = RankedLogger(__name__, rank_zero_only=True)
 
+torch.set_float32_matmul_precision("high")
+
 
 @task_wrapper
 def evaluate(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:

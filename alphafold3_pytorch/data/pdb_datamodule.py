@@ -1,7 +1,8 @@
+import multiprocessing
 import os
 import random
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Tuple
+from typing import Any, Callable, Dict, List, Literal, Tuple, Union
 
 import torch
 from lightning import LightningDataModule
@@ -17,6 +18,7 @@ from alphafold3_pytorch.models.components.inputs import (
     ATOM_DEFAULT_PAD_VALUES,
     UNCOLLATABLE_ATOM_INPUT_FIELDS,
     Alphafold3Input,
+    AtomInput,
     BatchedAtomInput,
     PDBDataset,
     PDBInput,
@@ -35,6 +37,7 @@ def collate_inputs_to_batched_atom_input(
     int_pad_value=-1,
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
+    transform_to_atom_inputs: bool = True,
 ) -> BatchedAtomInput | None:
     """Collate function for a list of AtomInput objects.
 
@@ -42,6 +45,7 @@ def collate_inputs_to_batched_atom_input(
     :param int_pad_value: The padding value for integer tensors.
     :param atoms_per_window: The number of atoms per window.
     :param map_input_fn: A function to apply to each input before collation.
+    :param transform_to_atom_inputs: Whether to transform the inputs to AtomInput objects.
     :return: A collated BatchedAtomInput object.
     """
     if exists(map_input_fn):
@@ -50,9 +54,25 @@ def collate_inputs_to_batched_atom_input(
     # go through all the inputs
     # and for any that is not AtomInput, try to transform it with the registered input type to corresponding registered function
 
-    atom_inputs = maybe_transform_to_atom_inputs(inputs)
-    if not atom_inputs:
-        return None
+    if transform_to_atom_inputs:
+        atom_inputs = maybe_transform_to_atom_inputs(inputs)
+
+        if len(atom_inputs) < len(inputs):
+            # if some of the `inputs` could not be converted into `atom_inputs`,
+            # randomly select a subset of the `atom_inputs` to duplicate to match
+            # the expected number of `atom_inputs`
+            assert (
+                len(atom_inputs) > 0
+            ), "No `AtomInput` objects could be created for the current batch."
+            atom_inputs = random.choices(atom_inputs, k=len(inputs))  # nosec
+    else:
+        atom_inputs = inputs
+
+    assert all(isinstance(i, AtomInput) for i in atom_inputs), (
+        "All inputs must be of type `AtomInput`. "
+        "If you want to transform the inputs to `AtomInput`, "
+        "set `transform_to_atom_inputs=True`."
+    )
 
     # take care of windowing the atompair_inputs and atompair_ids if they are not windowed already
 
@@ -196,6 +216,7 @@ def AF3DataLoader(
     *args,
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
+    transform_to_atom_inputs: bool = True,
     **kwargs,
 ):
     """Create a `torch.utils.data.DataLoader` with the `collate_inputs_to_batched_atom_input` or
@@ -204,10 +225,15 @@ def AF3DataLoader(
     :param args: The arguments to pass to `torch.utils.data.DataLoader`.
     :param atoms_per_window: The number of atoms per window.
     :param map_input_fn: A function to apply to each input before collation.
+    :param transform_to_atom_inputs: Whether to transform the inputs to AtomInput objects.
     :param kwargs: The keyword arguments to pass to `torch.utils.data.DataLoader`.
     :return: A `torch.utils.data.DataLoader` with a custom AF3 collate function.
     """
-    collate_fn = partial(collate_inputs_to_batched_atom_input, atoms_per_window=atoms_per_window)
+    collate_fn = partial(
+        collate_inputs_to_batched_atom_input,
+        atoms_per_window=atoms_per_window,
+        transform_to_atom_inputs=transform_to_atom_inputs,
+    )
 
     if exists(map_input_fn):
         collate_fn = partial(collate_fn, map_input_fn=map_input_fn)
@@ -280,6 +306,9 @@ class PDBDataModule(LightningDataModule):
         batch_size: int = 1,
         num_workers: int = 0,
         pin_memory: bool = False,
+        multiprocessing_context: Union[str, multiprocessing.context.BaseContext] | None = None,
+        prefetch_factor: int | None = None,
+        persistent_workers: bool = False,
     ) -> None:
         super().__init__()
 
@@ -299,7 +328,11 @@ class PDBDataModule(LightningDataModule):
 
         # if map dataset function given, curry into DataLoader
 
-        self.dataloader_class = partial(AF3DataLoader, atoms_per_window=atoms_per_window)
+        self.dataloader_class = partial(
+            AF3DataLoader,
+            atoms_per_window=atoms_per_window,
+            transform_to_atom_inputs=False,
+        )
 
         if exists(map_dataset_input_fn):
             self.dataloader_class = partial(
@@ -437,6 +470,7 @@ class PDBDataModule(LightningDataModule):
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=True,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
                 msa_dir=self.train_msa_dir,
                 templates_dir=self.train_templates_dir,
             )
@@ -462,6 +496,7 @@ class PDBDataModule(LightningDataModule):
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=False,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
                 msa_dir=self.val_msa_dir,
                 templates_dir=self.val_templates_dir,
             )
@@ -487,6 +522,7 @@ class PDBDataModule(LightningDataModule):
                 kalign_binary_path=self.hparams.kalign_binary_path,
                 training=False,
                 sample_only_pdb_ids=sample_only_pdb_ids,
+                return_atom_inputs=True,
                 msa_dir=self.test_msa_dir,
                 templates_dir=self.test_templates_dir,
             )
@@ -524,6 +560,9 @@ class PDBDataModule(LightningDataModule):
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
+            multiprocessing_context=self.hparams.multiprocessing_context,
+            prefetch_factor=self.hparams.prefetch_factor,
+            persistent_workers=self.hparams.persistent_workers,
             shuffle=True,
             drop_last=True,
         )
@@ -538,6 +577,9 @@ class PDBDataModule(LightningDataModule):
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
+            multiprocessing_context=self.hparams.multiprocessing_context,
+            prefetch_factor=self.hparams.prefetch_factor,
+            persistent_workers=self.hparams.persistent_workers,
             shuffle=False,
             drop_last=True,
         )
@@ -552,6 +594,9 @@ class PDBDataModule(LightningDataModule):
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
+            multiprocessing_context=self.hparams.multiprocessing_context,
+            prefetch_factor=self.hparams.prefetch_factor,
+            persistent_workers=self.hparams.persistent_workers,
             shuffle=False,
             drop_last=False,
         )

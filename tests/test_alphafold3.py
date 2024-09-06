@@ -724,7 +724,7 @@ def test_alphafold3(
         dim_token=8,
         atoms_per_window=atoms_per_window,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         num_molecule_mods=num_molecule_mods,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
@@ -829,10 +829,10 @@ def test_alphafold3_without_msa_and_templates():
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         num_molecule_mods=0,
         checkpoint_trunk_pairformer=True,
-        checkpoint_diffusion_token_transformer=True,
+        checkpoint_diffusion_module=True,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
@@ -895,7 +895,7 @@ def test_alphafold3_force_return_loss():
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
@@ -976,7 +976,7 @@ def test_alphafold3_force_return_loss_with_confidence_logits():
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
@@ -1095,7 +1095,7 @@ def test_collate_fn():
     alphafold3 = Alphafold3(
         dim_atom_inputs=77,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(depth=1),
@@ -1219,7 +1219,7 @@ def test_model_selection_score():
     atom_mask = torch.randint(0, 2, (atom_pos_true.shape[:-1])).type_as(atom_pos_true).bool()
     tok_repr_atm_mask = torch.randint(0, 2, (batch_size, seq_len)).bool()
 
-    dist_logits = torch.randn(batch_size, 38, seq_len, seq_len)
+    dist_logits = torch.randn(batch_size, 64, seq_len, seq_len)
     pde_logits = torch.randn(batch_size, 64, seq_len, seq_len)
 
     chain_length = [random.randint(seq_len // 4, seq_len // 2) for _ in range(batch_size)]  # nosec
@@ -1280,7 +1280,7 @@ def test_model_selection_score_end_to_end():
         dim_token=8,
         atoms_per_window=27,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),
         msa_module_kwargs=dict(
@@ -1475,7 +1475,7 @@ def test_readme2():
         dim_atompair_inputs=5,
         atoms_per_window=27,
         dim_template_feats=108,
-        num_dist_bins=38,
+        num_dist_bins=64,
         num_molecule_mods=0,
         confidence_head_kwargs=dict(pairformer_depth=1),
         template_embedder_kwargs=dict(pairformer_stack_depth=1),

@@ -48,6 +48,7 @@ def cfg_train_global() -> DictConfig:
             cfg.trainer.limit_test_batches = 0.1
             cfg.trainer.accelerator = "gpu" if torch.cuda.is_available() else "cpu"
             cfg.trainer.devices = 1
+            cfg.trainer.precision = 32
 
             if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "learning_rate_monitor"):
                 delattr(cfg.callbacks, "learning_rate_monitor")
@@ -94,6 +95,7 @@ def cfg_eval_global() -> DictConfig:
             cfg.trainer.limit_test_batches = 0.1
             cfg.trainer.accelerator = "gpu" if torch.cuda.is_available() else "cpu"
             cfg.trainer.devices = 1
+            cfg.trainer.precision = 32
 
             if hasattr(cfg, "callbacks") and hasattr(cfg.callbacks, "learning_rate_monitor"):
                 delattr(cfg.callbacks, "learning_rate_monitor")
