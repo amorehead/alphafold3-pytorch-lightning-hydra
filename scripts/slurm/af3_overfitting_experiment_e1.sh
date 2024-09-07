@@ -42,7 +42,7 @@ srun singularity exec --rocm \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
+        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         CONDA_PREFIX=/opt/miniforge3 OMP_NUM_THREADS=$OMP_NUM_THREADS \
         python3 alphafold3_pytorch/train.py \
         experiment=af3_overfitting_e1 \

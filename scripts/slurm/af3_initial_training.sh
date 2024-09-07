@@ -54,10 +54,7 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        python3 -m pip install deepspeed==0.15.1 git+https://github.com/wandb/wandb.git@41c9cb0cee6f763931045c25bf2fbdba32699575
-        && cd /alphafold3-pytorch-lightning-hydra \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
-        CONDA_PREFIX=/opt/miniforge3 OMP_NUM_THREADS=$OMP_NUM_THREADS \
+        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \
