@@ -8,6 +8,7 @@ RUN apt-get update \
         build-essential \
         git \
         wget \
+        gcc \
         libxrender1 \
         libxtst6 \
         libxext6 \
@@ -17,6 +18,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get autoremove -y \
     && apt-get clean
+
+# Install Go to build WandB from source
+ENV GO_VERSION=1.23.1
+RUN wget -P /tmp "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz"
+RUN tar -C /usr/local -xzf "/tmp/go${GO_VERSION}.linux-amd64.tar.gz"
+RUN rm "/tmp/go${GO_VERSION}.linux-amd64.tar.gz"
+
+ENV GOPATH /go
+ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
+RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 
 ## Set environment variables
 ENV ROCM_MAJOR=5
