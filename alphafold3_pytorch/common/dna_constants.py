@@ -1,8 +1,7 @@
 """Deoxyribonucleic acid (DNA) constants used in AlphaFold."""
 
-from typing import Final
-
 import numpy as np
+from beartype.typing import Final
 
 from alphafold3_pytorch.common import amino_acid_constants, rna_constants
 

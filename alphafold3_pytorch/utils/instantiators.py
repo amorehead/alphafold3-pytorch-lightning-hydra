@@ -1,6 +1,5 @@
-from typing import List
-
 import hydra
+from beartype.typing import List
 from lightning import Callback
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig

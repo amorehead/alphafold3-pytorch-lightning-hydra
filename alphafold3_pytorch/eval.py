@@ -1,8 +1,7 @@
-from typing import Any, Dict, List, Tuple
-
 import hydra
 import rootutils
 import torch
+from beartype.typing import Any, Dict, List, Tuple
 from lightning import LightningDataModule, LightningModule, Trainer
 from lightning.fabric.plugins.environments.cluster_environment import ClusterEnvironment
 from lightning.pytorch.loggers import Logger

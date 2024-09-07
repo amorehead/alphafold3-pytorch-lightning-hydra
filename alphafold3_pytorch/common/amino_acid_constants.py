@@ -1,8 +1,7 @@
 """Amino acid constants used in AlphaFold."""
 
-from typing import Final
-
 import numpy as np
+from beartype.typing import Final
 
 # This mapping is used when we need to store atom data in a format that requires
 # fixed atom data size for every residue (e.g. a numpy array).

@@ -22,10 +22,20 @@ Monitor and logs learning rate for lr schedulers during training.
 
 import itertools
 from collections import defaultdict
-from typing import Any, DefaultDict, Dict, List, Literal, Optional, Set, Tuple, Type
 
 import lightning.pytorch as pl
 import torch
+from beartype.typing import (
+    Any,
+    DefaultDict,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+)
 from lightning.pytorch.callbacks.callback import Callback
 from lightning.pytorch.utilities.exceptions import MisconfigurationException
 from lightning.pytorch.utilities.rank_zero import rank_zero_warn

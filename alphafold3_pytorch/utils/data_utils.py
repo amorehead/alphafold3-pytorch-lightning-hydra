@@ -1,7 +1,6 @@
-from typing import Any, Dict, List, Literal, Set, Tuple
-
 import numpy as np
 import torch
+from beartype.typing import Any, Dict, List, Literal, Set, Tuple
 from torch import Tensor
 
 from alphafold3_pytorch.utils.tensor_typing import ChainType, ResidueType, typecheck

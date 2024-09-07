@@ -1,11 +1,11 @@
 """General-purpose data pipeline."""
 
 import os
-from typing import Dict, List, MutableMapping, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from beartype.typing import Dict, List, MutableMapping, Optional, Tuple
 from torch import Tensor
 
 from alphafold3_pytorch.common.biomolecule import (

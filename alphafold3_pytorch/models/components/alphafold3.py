@@ -60,7 +60,6 @@ from functools import partial, wraps
 from importlib.metadata import version
 from math import pi, sqrt
 from pathlib import Path
-from typing import Dict, List, Literal, NamedTuple, Tuple
 
 import Bio
 import einx
@@ -69,6 +68,7 @@ import sh
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from beartype.typing import Dict, List, Literal, NamedTuple, Tuple
 from Bio.PDB.DSSP import DSSP
 from Bio.PDB.PDBIO import PDBIO
 from Bio.PDB.StructureBuilder import StructureBuilder

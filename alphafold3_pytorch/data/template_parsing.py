@@ -1,11 +1,11 @@
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Mapping, Tuple
 
 import numpy as np
 import polars as pl
 import torch
 import torch.nn.functional as F
+from beartype.typing import Any, Dict, List, Literal, Mapping, Tuple
 
 from alphafold3_pytorch.common.biomolecule import (
     Biomolecule,

@@ -24,11 +24,11 @@ import json
 import os
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Dict, List, Set, Tuple
 
 import numpy as np
 import polars as pl
 import rootutils
+from beartype.typing import Dict, List, Set, Tuple
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
 from tqdm import tqdm

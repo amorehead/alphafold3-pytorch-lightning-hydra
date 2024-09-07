@@ -1,6 +1,5 @@
-from typing import List
-
 import pytest
+from beartype.typing import List
 
 from tests.helpers.package_available import _SH_AVAILABLE
 

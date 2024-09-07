@@ -1,8 +1,8 @@
 import warnings
 from importlib.util import find_spec
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 
 import numpy as np
+from beartype.typing import Any, Callable, Dict, Iterable, Optional, Tuple
 from omegaconf import DictConfig
 
 from alphafold3_pytorch.utils import pylogger, rich_utils

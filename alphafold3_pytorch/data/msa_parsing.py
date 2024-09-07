@@ -6,7 +6,8 @@ import dataclasses
 import random
 import re
 import string
-from typing import Literal, Optional, Sequence, Tuple
+
+from beartype.typing import Literal, Optional, Sequence, Tuple
 
 from alphafold3_pytorch.utils.tensor_typing import typecheck
 

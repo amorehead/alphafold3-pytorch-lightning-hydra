@@ -1,9 +1,9 @@
 import os
-from typing import Literal
 
 import gemmi
 import rdkit.Geometry.rdGeometry as rdGeometry
 import torch
+from beartype.typing import Literal
 from rdkit.Chem import AllChem as Chem
 from rdkit.Chem.rdchem import Mol
 

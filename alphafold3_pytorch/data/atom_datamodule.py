@@ -1,7 +1,7 @@
 import os
 from functools import partial
-from typing import Any, Callable, Dict, Optional, Tuple
 
+from beartype.typing import Any, Callable, Dict, Optional, Tuple
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 

@@ -25,11 +25,11 @@ import json
 import os
 import subprocess  # nosec
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Dict, List, Literal, Optional, Set, Tuple, Union
 
 import numpy as np
 import polars as pl
 import rootutils
+from beartype.typing import Dict, List, Literal, Optional, Set, Tuple, Union
 from Bio.Data import PDBData
 from Bio.PDB.NeighborSearch import NeighborSearch
 from tqdm import tqdm

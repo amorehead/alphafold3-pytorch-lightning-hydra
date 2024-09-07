@@ -7,9 +7,9 @@ import itertools
 import logging
 from collections import defaultdict
 from operator import itemgetter
-from typing import Any, Mapping, Optional, Sequence, Set, Tuple
 
 import numpy as np
+from beartype.typing import Any, Mapping, Optional, Sequence, Set, Tuple
 from Bio import PDB
 from Bio.Data import PDBData
 

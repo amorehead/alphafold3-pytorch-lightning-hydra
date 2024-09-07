@@ -17,10 +17,10 @@ import copy
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Union
 
 import lightning.pytorch as pl
 import torch
+from beartype.typing import Any, Dict, Iterable, Optional, Union
 from lightning.pytorch import Callback
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.utilities.exceptions import MisconfigurationException

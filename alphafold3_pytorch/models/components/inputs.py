@@ -13,12 +13,12 @@ from functools import partial
 from io import StringIO
 from itertools import groupby
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
 
 import einx
 import numpy as np
 import torch
 import torch.nn.functional as F
+from beartype.typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
 from einops import pack, rearrange
 from joblib import Parallel, delayed
 from pdbeccdutils.core import ccd_reader

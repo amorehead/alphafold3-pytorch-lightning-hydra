@@ -1,9 +1,9 @@
 import os
 import time
-from typing import Any, Dict, List, Literal, Tuple
 
 import rootutils
 import torch
+from beartype.typing import Any, Dict, List, Literal, Tuple
 from lightning import LightningModule
 from lightning.pytorch.utilities.memory import garbage_collection_cuda
 from torch import Tensor

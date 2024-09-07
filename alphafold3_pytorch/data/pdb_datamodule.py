@@ -2,9 +2,9 @@ import multiprocessing
 import os
 import random
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Tuple, Union
 
 import torch
+from beartype.typing import Any, Callable, Dict, List, Literal, Tuple, Union
 from lightning import LightningDataModule
 from torch import tensor
 from torch.utils.data import DataLoader, Dataset

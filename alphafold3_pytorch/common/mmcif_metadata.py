@@ -1,9 +1,9 @@
 """MmCIF metadata."""
 
 from importlib.metadata import version
-from typing import Mapping, Sequence
 
 import numpy as np
+from beartype.typing import Mapping, Sequence
 
 alphafold_version = version("alphafold3_pytorch_lightning_hydra")
 

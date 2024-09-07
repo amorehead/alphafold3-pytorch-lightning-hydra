@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import einx
 import torch
 import torch.nn.functional as F

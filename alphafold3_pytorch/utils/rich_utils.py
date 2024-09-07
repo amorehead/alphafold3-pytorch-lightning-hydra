@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Sequence
 
 import rich
 import rich.syntax
 import rich.tree
+from beartype.typing import Sequence
 from hydra.core.hydra_config import HydraConfig
 from lightning_utilities.core.rank_zero import rank_zero_only
 from omegaconf import DictConfig, OmegaConf, open_dict

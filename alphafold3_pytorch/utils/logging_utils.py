@@ -1,5 +1,4 @@
-from typing import Any, Dict
-
+from beartype.typing import Any, Dict
 from lightning_utilities.core.rank_zero import rank_zero_only
 from omegaconf import OmegaConf
 

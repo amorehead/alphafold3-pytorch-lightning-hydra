@@ -1,7 +1,7 @@
 import importlib
-from typing import Any, List, Set
 
-from omegaconf import ListConfig, OmegaConf
+from beartype.typing import Any, List, Set
+from omegaconf import OmegaConf
 
 from alphafold3_pytorch.data.pdb_datamodule import (
     alphafold3_inputs_to_batched_atom_input,
