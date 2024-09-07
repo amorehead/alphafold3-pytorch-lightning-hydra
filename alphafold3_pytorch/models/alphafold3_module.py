@@ -76,8 +76,7 @@ class Alphafold3LitModule(LightningModule):
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
 
-        self.net = None
-        self.save_hyperparameters(logger=False)
+        self.save_hyperparameters(ignore=["network"], logger=False)
 
         # for averaging loss across batches
 
@@ -97,11 +96,6 @@ class Alphafold3LitModule(LightningModule):
         self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
 
-    @property
-    def is_main(self) -> bool:
-        """Check if the current process is the main process."""
-        return self.trainer.global_rank == 0
-
     @typecheck
     def prepare_batch_dict(self, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare the input batch dictionary for the model.
@@ -109,23 +103,32 @@ class Alphafold3LitModule(LightningModule):
         :param batch_dict: The input batch dictionary.
         :return: The prepared batch dictionary.
         """
-        if not self.net.has_molecule_mod_embeds:
+        if not self.network.has_molecule_mod_embeds:
             batch_dict["is_molecule_mod"] = None
         return batch_dict
 
     @typecheck
     def forward(self, batch: BatchedAtomInput) -> Tuple[Float[""], LossBreakdown]:  # type: ignore
-        """Perform a forward pass through the model `self.net`.
+        """Perform a forward pass through the model `self.network`.
 
         :param x: A batch of `AtomInput` data.
         :return: A tensor of losses as well as a breakdown of the component losses.
         """
-        batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
-        return self.net(
-            **batch_dict,
+        batch_dict = batch.dict()
+        batch_model_forward_dict = self.prepare_batch_dict(batch.model_forward_dict())
+
+        filepaths = (
+            list(batch_dict["filepath"])
+            if "filepath" in batch_dict and exists(batch_dict["filepath"])
+            else None
+        )
+
+        return self.network(
+            **batch_model_forward_dict,
             return_loss_breakdown=True,
             diffusion_add_bond_loss=self.hparams.diffusion_add_bond_loss,
             diffusion_add_smooth_lddt_loss=self.hparams.diffusion_add_smooth_lddt_loss,
+            filepaths=filepaths,
         )
 
     def on_train_start(self) -> None:
@@ -159,18 +162,20 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.train_loss(loss)
+        self.train_loss.update(loss)
         self.log(
             "train/loss",
             self.train_loss,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
         self.log_dict(
             loss_breakdown._asdict(),
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -199,7 +204,7 @@ class Alphafold3LitModule(LightningModule):
         samples: List[Sample] = []
 
         for _ in range(self.hparams.num_samples_per_example):
-            batch_sampled_atom_pos, logits = self.net(
+            batch_sampled_atom_pos, logits = self.network(
                 **prepared_model_batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
@@ -252,21 +257,23 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.val_model_selection_score(score_details.score.detach())
+        self.val_model_selection_score.update(score_details.score.detach())
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
-        self.val_top_ranked_lddt(top_ranked_lddt.detach())
+        self.val_top_ranked_lddt.update(top_ranked_lddt.detach())
         self.log(
             "val/top_ranked_lddt",
             self.val_top_ranked_lddt,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -328,7 +335,7 @@ class Alphafold3LitModule(LightningModule):
         samples: List[Sample] = []
 
         for _ in range(self.hparams.num_samples_per_example):
-            batch_sampled_atom_pos, logits = self.net(
+            batch_sampled_atom_pos, logits = self.network(
                 **prepared_model_batch_dict,
                 return_loss=False,
                 return_confidence_head_logits=True,
@@ -385,21 +392,23 @@ class Alphafold3LitModule(LightningModule):
 
         # update and log metrics
 
-        self.test_model_selection_score(score_details.score.detach())
+        self.test_model_selection_score.update(score_details.score.detach())
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
-        self.test_top_ranked_lddt(top_ranked_lddt.detach())
+        self.test_top_ranked_lddt.update(top_ranked_lddt.detach())
         self.log(
             "test/top_ranked_lddt",
             self.test_top_ranked_lddt,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -505,7 +514,7 @@ class Alphafold3LitModule(LightningModule):
         batch_dict = batch.dict()
         prepared_model_batch_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
-        batch_sampled_atom_pos = self.net(
+        batch_sampled_atom_pos = self.network(
             **prepared_model_batch_dict,
             return_loss=False,
         )
@@ -570,23 +579,20 @@ class Alphafold3LitModule(LightningModule):
         :param stage: Either `"fit"`, `"validate"`, `"test"`, or `"predict"`.
         """
         if self.hparams.compile and stage == "fit":
-            self.net = torch.compile(self.net)
+            self.network = torch.compile(self.network)
 
     def configure_model(self):
         """Configure the model to be used for training, validation, testing, or prediction.
 
         :return: The configured model.
         """
-        if exists(self.net):
-            return
-
         if exists(self.trainer):
             sleep = self.trainer.global_rank * 4
             log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")
             time.sleep(sleep)
 
         net_config = {k: v for k, v in self.hparams.net.items() if k != "target"}
-        self.net = self.hparams.net["target"](**net_config)
+        self.network = self.hparams.net["target"](**net_config)
 
     def configure_optimizers(self):
         """Choose what optimizers and optional learning-rate schedulers to use during model

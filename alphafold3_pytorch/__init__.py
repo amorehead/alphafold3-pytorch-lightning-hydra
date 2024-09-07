@@ -173,39 +173,18 @@ def resolve_omegaconf_classes(module_name: str, class_names: List[str]) -> Set[A
     return classes
 
 
-def int_divide(x: int, y: int) -> int:
+def int_divide(x: int, y: int, raise_exception: bool = False) -> int:
     """Perform integer division on `x` and `y`.
 
     :param x: The dividend.
     :param y: The divisor.
     :return: The integer division result.
     """
-    if x % y == 0:
+    if x % y == 0 or not raise_exception:
         return x // y
-    else:
+    elif x % y != 0 and raise_exception:
         raise ValueError(
             f"Error: {x} is not divisible by {y} in the call to OmegaConf's `int_divide` function."
-        )
-
-
-def validate_gradient_accumulation_factor(
-    batch_size: int, devices: int | ListConfig, num_nodes: int
-) -> int:
-    """Validate the gradient accumulation factor. If the factor is valid, return `world_size`.
-
-    :param batch_size: The batch size.
-    :param devices: The number of devices.
-    :param num_nodes: The number of nodes.
-    :return: The validated gradient accumulation factor.
-    """
-    if isinstance(devices, ListConfig):
-        devices = len(devices)
-    world_size = devices * num_nodes
-    if batch_size % world_size == 0:
-        return world_size
-    else:
-        raise ValueError(
-            f"Error: For gradient accumulation, the batch size ({batch_size}) must be divisible by the distributed device world size ({world_size})."
         )
 
 
@@ -218,14 +197,8 @@ def register_custom_omegaconf_resolvers():
         "resolve_classes",
         lambda module_name, class_names: resolve_omegaconf_classes(module_name, class_names),
     )
-    OmegaConf.register_new_resolver("add", lambda x, y: int(x) + int(y))
-    OmegaConf.register_new_resolver("subtract", lambda x, y: int(x) - int(y))
-    OmegaConf.register_new_resolver("multiply", lambda x, y: int(x) * int(y))
-    OmegaConf.register_new_resolver("divide", lambda x, y: int(x) / int(y))
+    OmegaConf.register_new_resolver("add", lambda x, y: x + y)
+    OmegaConf.register_new_resolver("subtract", lambda x, y: x - y)
+    OmegaConf.register_new_resolver("multiply", lambda x, y: x * y)
+    OmegaConf.register_new_resolver("divide", lambda x, y: x / y)
     OmegaConf.register_new_resolver("int_divide", lambda x, y: int_divide(int(x), int(y)))
-    OmegaConf.register_new_resolver(
-        "validate_gradient_accumulation_factor",
-        lambda batch_size, devices, num_nodes: validate_gradient_accumulation_factor(
-            int(batch_size), devices, int(num_nodes)
-        ),
-    )

@@ -3,5 +3,5 @@ defaults:
 
 # simulate DDP on CPU, useful for debugging
 accelerator: cpu
-devices: 2
+devices: 8
 strategy: ddp_spawn

@@ -10,6 +10,7 @@ defaults:
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
+  - override /strategy: deepspeed
   - override /trainer: deepspeed
 
 # all parameters below will be merged with parameters from default configurations set above
@@ -70,3 +71,4 @@ trainer:
   max_epochs: 20000
   check_val_every_n_epoch: null
   val_check_interval: 50
+  log_every_n_steps: 1

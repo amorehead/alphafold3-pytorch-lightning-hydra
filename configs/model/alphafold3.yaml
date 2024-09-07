@@ -19,7 +19,7 @@ net:
   dim_template_feats: 108
   num_dist_bins: 64
   pdb_training_set: true
-  diffusion_num_augmentations: 12 # NOTE: must be one of (initial_training: 48, fine_tuning_1: 32, fine_tuning_2: 32, fine_tuning_3: 32), proceeding from left to right following Table 6 in the paper
+  diffusion_num_augmentations: 4 # NOTE: must be one of (initial_training: 48, fine_tuning_1: 32, fine_tuning_2: 32, fine_tuning_3: 32), proceeding from left to right following Table 6 in the paper
 
   checkpoint_input_embedding: true
   checkpoint_trunk_pairformer: true

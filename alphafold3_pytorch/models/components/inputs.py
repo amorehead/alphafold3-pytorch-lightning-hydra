@@ -2402,29 +2402,37 @@ def load_msa_from_msa_dir(
             msas[chain_id] = None
             continue
 
-        # NOTE: A single chain-specific MSA file contains alignments for all polymer residues in the chain,
-        # but the chain's ligands are not included in the MSA file and therefore must be manually inserted
-        # into the MSAs as unknown amino acid residues.
-        assert len(msa_fpaths) == 1, (
-            f"{len(msa_fpaths)} MSA files found for chain {chain_id} of file {file_id}. "
-            "Please ensure that one MSA file is present for each chain."
-        )
-        msa_fpath = msa_fpaths[0]
-        msa_type = os.path.splitext(os.path.basename(msa_fpath))[0].split("_")[-1]
-
-        with open(msa_fpath, "r") as f:
-            msa = f.read()
-            msa = msa_parsing.parse_a3m(msa, msa_type)
-            msa = (
-                (
-                    msa.random_truncate(max_msas_per_chain)
-                    if randomly_truncate
-                    else msa.truncate(max_msas_per_chain)
-                )
-                if exists(max_msas_per_chain)
-                else msa
+        try:
+            # NOTE: A single chain-specific MSA file contains alignments for all polymer residues in the chain,
+            # but the chain's ligands are not included in the MSA file and therefore must be manually inserted
+            # into the MSAs as unknown amino acid residues.
+            assert len(msa_fpaths) == 1, (
+                f"{len(msa_fpaths)} MSA files found for chain {chain_id} of file {file_id}. "
+                "Please ensure that one MSA file is present for each chain."
             )
-            msas[chain_id] = msa
+            msa_fpath = msa_fpaths[0]
+            msa_type = os.path.splitext(os.path.basename(msa_fpath))[0].split("_")[-1]
+
+            with open(msa_fpath, "r") as f:
+                msa = f.read()
+                msa = msa_parsing.parse_a3m(msa, msa_type)
+                msa = (
+                    (
+                        msa.random_truncate(max_msas_per_chain)
+                        if randomly_truncate
+                        else msa.truncate(max_msas_per_chain)
+                    )
+                    if exists(max_msas_per_chain)
+                    else msa
+                )
+                msas[chain_id] = msa
+
+        except Exception as e:
+            if verbose:
+                logger.warning(
+                    f"Failed to load MSA for chain {chain_id} of file {file_id} due to: {e}. Skipping MSA loading."
+                )
+            msas[chain_id] = None
 
     features = make_msa_features(msas, chain_id_to_residue)
     features = make_msa_mask(features)
@@ -3408,9 +3416,11 @@ class PDBDataset(Dataset):
         # get the mmCIF file corresponding to the sampled structure
 
         if not exists(mmcif_filepath):
-            raise FileNotFoundError(f"mmCIF file for PDB ID {pdb_id} not found.")
-        if not os.path.exists(mmcif_filepath):
-            raise FileNotFoundError(f"mmCIF file {mmcif_filepath} not found.")
+            logger.warning(f"mmCIF file for PDB ID {pdb_id} not found.")
+            return None
+        elif not os.path.exists(mmcif_filepath):
+            logger.warning(f"mmCIF file {mmcif_filepath} not found.")
+            return None
 
         cropping_config = None
 
@@ -3432,9 +3442,21 @@ class PDBDataset(Dataset):
 
     def __getitem__(self, idx: int | str, max_attempts: int = 5) -> PDBInput | AtomInput:
         """Return either a PDBInput or an AtomInput object for the specified index."""
-        retry_decorator = retry(retry_on_result=not_exists, stop_max_attempt_number=max_attempts)
-        i = retry_decorator(self.get_item)(idx)
-        return i
+        i = self.get_item(idx)
+
+        # if the input could not be successfully retrieved, try again up to `max_attempts` times
+        if exists(i):
+            return i
+        else:
+            attempts = 0
+            while not exists(i):
+                if attempts >= max_attempts:
+                    raise ValueError(
+                        f"Failed to retrieve a valid input after {attempts} attempts."
+                    )
+                i = self.get_item(idx)
+                attempts += 1
+            return i
 
 
 # the config used for keeping track of all the disparate inputs and their transforms down to AtomInput

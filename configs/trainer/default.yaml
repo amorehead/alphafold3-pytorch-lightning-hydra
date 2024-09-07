@@ -2,15 +2,15 @@ _target_: lightning.pytorch.trainer.Trainer
 
 default_root_dir: ${paths.output_dir}
 
-min_steps: 1 # prevents early stopping
-max_steps: ${divide:${multiply:1e6, 20}, 256} # NOTE: references values for "Initial training" in Table 6 of the paper
+min_epochs: 1 # prevents early stopping
+max_epochs: 20
 
 accelerator: gpu
 devices: 1
 num_nodes: 1
 
 # mixed precision for extra speed-up
-precision: bf16-mixed
+# precision: bf16-mixed
 
 # perform a validation loop every N training epochs
 check_val_every_n_epoch: 1
@@ -24,8 +24,8 @@ gradient_clip_algorithm: norm
 gradient_clip_val: 10.0
 
 # accumulate gradients of `accumulate_grad_batches` batches (e.g., by this amount for each rank) before doing a backward pass
-# NOTE: here, we have to accumulate gradients independently for each rank, per https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#accumulate-gradients
-accumulate_grad_batches: ${validate_gradient_accumulation_factor:${data.batch_size}, ${.devices}, ${.num_nodes}}
+# NOTE: here, we would have to accumulate gradients independently for each rank, per https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#accumulate-gradients
+accumulate_grad_batches: 1
 
 # if `num_sanity_val_steps` is > 0, then specifically that many validation steps will be run during the first call to `trainer.fit`
 num_sanity_val_steps: 0

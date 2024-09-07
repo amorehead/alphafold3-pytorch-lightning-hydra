@@ -44,7 +44,7 @@ export RDZV_PORT=29400
 # For what `srun` is concerned, only one task is created, the `torchrun` process.
 
 # Define WandB run ID
-RUN_ID="56bl0izr"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="40x4joo6"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun -c 64 singularity exec \
@@ -54,7 +54,9 @@ srun -c 64 singularity exec \
     --pwd /alphafold3-pytorch-lightning-hydra \
     "$SINGULARITY_CONTAINER" \
     bash -c "
-        WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
+        python3 -m pip install deepspeed==0.15.1 git+https://github.com/wandb/wandb.git@41c9cb0cee6f763931045c25bf2fbdba32699575
+        && cd /alphafold3-pytorch-lightning-hydra \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID \
         CONDA_PREFIX=/opt/miniforge3 OMP_NUM_THREADS=$OMP_NUM_THREADS \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \

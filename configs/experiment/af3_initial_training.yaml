@@ -10,6 +10,7 @@ defaults:
   - override /data: pdb
   - override /logger: wandb
   - override /model: alphafold3
+  - override /strategy: deepspeed
   - override /trainer: deepspeed
 
 # all parameters below will be merged with parameters from default configurations set above

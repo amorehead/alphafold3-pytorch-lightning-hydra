@@ -1,6 +1,6 @@
 [project]
 name = "alphafold3-pytorch-lightning-hydra"
-version = "0.4.37"
+version = "0.4.43"
 description = "AlphaFold 3 - Pytorch"
 authors = [
     { name = "Phil Wang", email = "lucidrains@gmail.com" },
@@ -46,7 +46,7 @@ dependencies = [
     # "comet-ml",
     # "mlflow",
     # "neptune-client",
-    "wandb==0.16.6",
+    "wandb @ git+https://github.com/wandb/wandb.git@41c9cb0cee6f763931045c25bf2fbdba32699575",
 
     # --------- others --------- #
     "adam-atan2-pytorch>=0.0.8", # optimization
@@ -54,12 +54,14 @@ dependencies = [
     "biopython>=1.83", # for biological data parsing
     "click",           # for command line interfaces
     "CoLT5-attention>=0.11.0", # for CoLT5 attention
-    "deepspeed @ git+https://github.com/amorehead/DeepSpeed.git@v0.15.0", # for distributed training
+    "deepspeed==0.15.1", # for distributed training
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
     "environs",        # for environment variable parsing
     "fastapi",         # for web APIs
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
+    "gradio",         # for web interfaces
+    "gradio_molecule3d", # for 3D molecule visualization
     "gemmi>=0.6.6",    # for mmCIF file metadata parsing
     "huggingface_hub>=0.21.4", # for downloading pretrained HuggingFace weights
     "ipykernel",       # for running Jupyter notebooks

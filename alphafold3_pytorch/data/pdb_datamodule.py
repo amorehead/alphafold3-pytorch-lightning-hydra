@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Literal, Tuple, Union
 
 import torch
 from lightning import LightningDataModule
-from torch import Tensor
+from torch import tensor
 from torch.utils.data import DataLoader, Dataset
 
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
@@ -139,7 +139,7 @@ def collate_inputs_to_batched_atom_input(
         # get the max lengths across all dimensions
 
         shapes_as_tensor = torch.stack(
-            [Tensor(tuple(g.shape) if exists(g) else ((0,) * ndim)).int() for g in grouped],
+            [tensor(tuple(g.shape) if exists(g) else ((0,) * ndim)).int() for g in grouped],
             dim=-1,
         )
 
