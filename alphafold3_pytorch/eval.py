@@ -1,3 +1,5 @@
+import multiprocessing
+
 import hydra
 import rootutils
 import torch
@@ -40,8 +42,6 @@ from alphafold3_pytorch.utils import (
 )
 
 log = RankedLogger(__name__, rank_zero_only=True)
-
-torch.set_float32_matmul_precision("high")
 
 
 @task_wrapper
@@ -154,5 +154,8 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn", force=True)
+    torch.set_float32_matmul_precision("high")
+
     register_custom_omegaconf_resolvers()
     main()

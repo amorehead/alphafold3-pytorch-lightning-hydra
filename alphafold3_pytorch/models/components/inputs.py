@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import gc
 import glob
 import json
 import os
@@ -666,7 +667,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
         asym_ids = i.additional_molecule_feats[..., 2]
         asym_ids = F.pad(asym_ids, (1, 0), value=-1)
-        is_first_mol_in_chains = (asym_ids[1:] - asym_ids[:-1]) == 1
+        is_first_mol_in_chains = (asym_ids[1:] - asym_ids[:-1]) != 0
 
         is_chainable_biomolecules = i.is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1)
 
@@ -949,7 +950,7 @@ def molecule_lengthed_molecule_input_to_atom_input(
 
     asym_ids = i.additional_molecule_feats[..., 2]
     asym_ids = F.pad(asym_ids, (1, 0), value=-1)
-    is_first_mol_in_chains = (asym_ids[1:] - asym_ids[:-1]) == 1
+    is_first_mol_in_chains = (asym_ids[1:] - asym_ids[:-1]) != 0
     is_chainable_biomolecules = i.is_molecule_types[..., IS_BIOMOLECULE_INDICES].any(dim=-1)
 
     # repeat all the molecule lengths to the token lengths, using `one_token_per_atom`
@@ -1940,18 +1941,14 @@ def extract_chain_sequences_from_biomolecule_chemical_components(
         mapped_restype = comp_details.id if is_atomized_residue(res_chem_type) else restype
         current_chain_seq.append((mapped_restype, res_chem_type))
 
-        # reset current_chain_seq if the next residue is either not part of the current chain or is a different (unmodified) molecule type
-
-        unmod_res_chem_type = get_pdb_input_residue_molecule_type(
-            comp_details.type,
-            is_modified_polymer_residue=False,
-        )
+        # reset current_chain_seq if the next residue is either not part of the current chain or is a different chemical type
 
         chain_ending = idx + 1 < len(chain_index) and chain_index[idx] != chain_index[idx + 1]
-        chem_type_ending = idx + 1 < len(chem_comps) and unmod_res_chem_type != (
+        chem_type_ending = idx + 1 < len(chem_comps) and res_chem_type != (
             get_pdb_input_residue_molecule_type(
                 chem_comps[idx + 1].type,
-                is_modified_polymer_residue=False,
+                is_modified_polymer_residue=is_polymer(chem_comps[idx + 1].type)
+                and residue_constants.restype_3to1.get(chem_comps[idx + 1].id, "X") == "X",
             )
         )
         if chain_ending or chem_type_ending:
@@ -2180,7 +2177,15 @@ def extract_canonical_molecules_from_biomolecule_chains(
                 # construct canonical molecule for post-mapping bond orders
 
                 smile = seq_mapping[seq]
-                canonical_mol = mol_from_smile(smile)
+                try:
+                    canonical_mol = mol_from_smile(smile)
+                except Exception as e:
+                    if verbose:
+                        logger.warning(
+                            f"Failed to construct canonical RDKit molecule from the SMILES string for residue {seq} due to: {e}. "
+                            "Skipping canonical molecule construction."
+                        )
+                    canonical_mol = None
 
                 # find all atom positions and masks for the current atomized residue
 
@@ -2266,10 +2271,17 @@ def extract_canonical_molecules_from_biomolecule_chains(
                 contiguous_res_atom_mapping = np.vectorize(contiguous_res_atom_mapping.get)(
                     res_atom_mapping
                 )
-
                 res_atom_positions = atom_positions[res_index][res_atom_mask][
                     contiguous_res_atom_mapping
                 ]
+
+                num_atom_positions = len(res_atom_positions) + len(missing_atom_indices)
+                if num_atom_positions != mol.GetNumAtoms():
+                    raise ValueError(
+                        f"The number of (missing and present) atom positions ({num_atom_positions}) for residue {res} does not match the number of atoms in the RDKit molecule ({mol.GetNumAtoms()}). "
+                        "Please ensure that these input features are correctly paired. Skipping this example."
+                    )
+
                 mol = add_atom_positions_to_mol(
                     mol,
                     res_atom_positions.reshape(-1, 3),
@@ -3440,7 +3452,7 @@ class PDBDataset(Dataset):
 
         return i
 
-    def __getitem__(self, idx: int | str, max_attempts: int = 5) -> PDBInput | AtomInput:
+    def __getitem__(self, idx: int | str, max_attempts: int = 10) -> PDBInput | AtomInput:
         """Return either a PDBInput or an AtomInput object for the specified index."""
         retry_decorator = retry(retry_on_result=not_exists, stop_max_attempt_number=max_attempts)
         i = retry_decorator(self.get_item)(idx)

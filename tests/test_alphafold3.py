@@ -1318,7 +1318,9 @@ def test_model_selection_score_end_to_end():
 
 def test_unresolved_protein_rasa():
     """Test the unresolved protein relative solvent accessible surface area (RASA) calculation."""
-    mmcif_filepath = os.path.join("data", "test", f"{DATA_TEST_PDB_ID}-assembly1.cif")
+    mmcif_filepath = os.path.join(
+        "data", "test", "mmcifs", DATA_TEST_PDB_ID[1:3], f"{DATA_TEST_PDB_ID}-assembly1.cif"
+    )
     pdb_input = PDBInput(mmcif_filepath)
 
     mol_input = pdb_input_to_molecule_input(pdb_input)

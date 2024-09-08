@@ -120,6 +120,46 @@ def test_alphafold3_input(directed_bonds):
     alphafold3(**batched_atom_input.model_forward_dict(), num_sample_steps=1)
 
 
+def test_return_bio_pdb_structures():
+    """Test the Alphafold3Input class, particularly its Biopython PDB transformations."""
+    alphafold3_input = Alphafold3Input(
+        proteins=[
+            "MLEICLKLVGCKSKKGLSSSSSCYLEEALQRPVASDF",
+            "MGKCRGLRTARKLRSHRRDQKWHDKQYKKAHLGTALKANPFGGASHAKGIVLEKVGVEAKQPNSAIRKCVRVQLIKNGKKITAFVPNDGCLNFIEENDEVLVAGFGRKGHAVGDIPGVRFKVVKVANVSLLALYKGKKERPRS",
+        ],
+    )
+
+    batched_atom_input = alphafold3_inputs_to_batched_atom_input(alphafold3_input)
+
+    # feed it into alphafold3
+
+    alphafold3 = Alphafold3(
+        dim_atom_inputs=3,
+        dim_atompair_inputs=5,
+        num_atom_embeds=0,
+        num_atompair_embeds=0,
+        atoms_per_window=27,
+        dim_template_feats=108,
+        num_dist_bins=64,
+        num_molecule_mods=0,
+        confidence_head_kwargs=dict(pairformer_depth=1),
+        template_embedder_kwargs=dict(pairformer_stack_depth=1),
+        msa_module_kwargs=dict(depth=1),
+        pairformer_stack=dict(depth=2),
+        diffusion_module_kwargs=dict(
+            atom_encoder_depth=1,
+            token_transformer_depth=1,
+            atom_decoder_depth=1,
+        ),
+    )
+
+    alphafold3(
+        **batched_atom_input.model_forward_dict(),
+        num_sample_steps=1,
+        return_bio_pdb_structures=True,
+    )
+
+
 def test_atompos_input():
     """Test the Alphafold3Input class, particularly its input transformations with atom
     positions."""
@@ -190,7 +230,9 @@ def test_atompos_input():
 
 def test_pdbinput_input():
     """Test the PDBInput class, particularly its input transformations for mmCIF files."""
-    filepath = os.path.join("data", "test", f"{DATA_TEST_PDB_ID}-assembly1.cif")
+    filepath = os.path.join(
+        "data", "test", "mmcifs", DATA_TEST_PDB_ID[1:3], f"{DATA_TEST_PDB_ID}-assembly1.cif"
+    )
     file_id = os.path.splitext(os.path.basename(filepath))[0]
     assert os.path.exists(filepath), f"File {filepath} does not exist."
 

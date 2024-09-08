@@ -8,6 +8,7 @@
 defaults:
   - override /callbacks: default
   - override /data: pdb
+  - override /environment: default
   - override /logger: wandb
   - override /model: alphafold3
   - override /strategy: deepspeed

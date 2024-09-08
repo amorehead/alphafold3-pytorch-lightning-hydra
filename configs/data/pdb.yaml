@@ -20,10 +20,11 @@ map_dataset_input_fn: null # if specified, a function that should be applied to 
 train_val_test_split: null # NOTE: if specified, the number of examples to use for training, validation, and testing, respectively
 shuffle_train_val_test_subsets: True # NOTE: this is only referenced if `train_val_test_split` is specified
 overfitting_train_examples: false # NOTE: if true, overfit to the training dataset by treating it also as the validation and test datasets
+ablate_weighted_pdb_sampler: false # whether to ablate the WeightedPDBSampler
 sample_only_pdb_ids: null # if specified, a subset of  PDB IDs to sample from the training, validation, or testing sets
 batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
-num_workers: 0
-pin_memory: false
-multiprocessing_context: null
-prefetch_factor: null
+num_workers: 1
+pin_memory: true
+multiprocessing_context: spawn
+prefetch_factor: 1
 persistent_workers: false

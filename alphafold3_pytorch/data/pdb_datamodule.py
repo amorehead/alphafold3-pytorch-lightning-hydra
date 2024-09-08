@@ -302,6 +302,7 @@ class PDBDataModule(LightningDataModule):
         train_val_test_split: Tuple[int, int, int] | None = None,
         shuffle_train_val_test_subsets: bool = True,
         overfitting_train_examples: bool = False,
+        ablate_weighted_pdb_sampler: bool = False,
         sample_only_pdb_ids: List[str] | None = None,
         batch_size: int = 1,
         num_workers: int = 0,
@@ -339,6 +340,190 @@ class PDBDataModule(LightningDataModule):
                 self.dataloader_class, map_input_fn=map_dataset_input_fn
             )
 
+        # load dataset splits
+
+        sample_only_pdb_ids = (
+            # sample only specific PDB IDs as requested
+            set(self.hparams.sample_only_pdb_ids)
+            if exists(self.hparams.sample_only_pdb_ids)
+            else None
+        )
+        sample_only_pdb_ids_list = (
+            list(sample_only_pdb_ids) if exists(sample_only_pdb_ids) else None
+        )
+
+        # data paths for each split
+        for split in ("train", "val", "test"):
+            path_split = split
+            if self.hparams.overfitting_train_examples:
+                # NOTE: when overfitting to a subset of examples,
+                # we want to load the training set multiple times
+                # to ensure that the model sees the same examples
+                # across training, validation, and testing
+                path_split = "train"
+
+            setattr(
+                self,
+                f"{split}_mmcifs_dir",
+                os.path.join(self.hparams.data_dir, f"{path_split}_mmcifs"),
+            )
+            setattr(
+                self,
+                f"{split}_clusterings_dir",
+                os.path.join(self.hparams.data_dir, "data_caches", f"{path_split}_clusterings"),
+            )
+            setattr(
+                self,
+                f"{split}_msa_dir",
+                os.path.join(self.hparams.msa_dir, f"{path_split}_msas"),
+            )
+            setattr(
+                self,
+                f"{split}_templates_dir",
+                os.path.join(self.hparams.templates_dir, f"{path_split}_templates"),
+            )
+            setattr(
+                self,
+                f"{split}_chain_mapping_paths",
+                [
+                    os.path.join(
+                        getattr(self, f"{split}_clusterings_dir"),
+                        "ligand_chain_cluster_mapping.csv",
+                    ),
+                    os.path.join(
+                        getattr(self, f"{split}_clusterings_dir"),
+                        "nucleic_acid_chain_cluster_mapping.csv",
+                    ),
+                    os.path.join(
+                        getattr(self, f"{split}_clusterings_dir"),
+                        "peptide_chain_cluster_mapping.csv",
+                    ),
+                    os.path.join(
+                        getattr(self, f"{split}_clusterings_dir"),
+                        "protein_chain_cluster_mapping.csv",
+                    ),
+                ],
+            )
+            setattr(
+                self,
+                f"{split}_interface_mapping_path",
+                os.path.join(
+                    getattr(self, f"{path_split}_clusterings_dir"),
+                    "interface_cluster_mapping.csv",
+                ),
+            )
+
+        # training set
+        sampler_train = (
+            None
+            if self.hparams.ablate_weighted_pdb_sampler
+            else WeightedPDBSampler(
+                chain_mapping_paths=self.train_chain_mapping_paths,
+                interface_mapping_path=self.train_interface_mapping_path,
+                batch_size=1,
+                pdb_ids_to_keep=sample_only_pdb_ids_list,
+            )
+        )
+        self.data_train = PDBDataset(
+            folder=self.train_mmcifs_dir,
+            sampler=sampler_train,
+            sample_type=self.hparams.sample_type,
+            contiguous_weight=self.hparams.contiguous_weight,
+            spatial_weight=self.hparams.spatial_weight,
+            spatial_interface_weight=self.hparams.spatial_interface_weight,
+            crop_size=self.hparams.crop_size,
+            max_msas_per_chain=self.hparams.max_msas_per_chain,
+            max_templates_per_chain=self.hparams.max_templates_per_chain,
+            num_templates_per_chain=self.hparams.num_templates_per_chain,
+            kalign_binary_path=self.hparams.kalign_binary_path,
+            training=True,
+            sample_only_pdb_ids=sample_only_pdb_ids,
+            return_atom_inputs=True,
+            msa_dir=self.train_msa_dir,
+            templates_dir=self.train_templates_dir,
+        )
+
+        # validation set
+        sampler_val = (
+            None
+            if self.hparams.ablate_weighted_pdb_sampler
+            else WeightedPDBSampler(
+                chain_mapping_paths=self.val_chain_mapping_paths,
+                interface_mapping_path=self.val_interface_mapping_path,
+                batch_size=1,
+                pdb_ids_to_keep=sample_only_pdb_ids_list,
+            )
+        )
+        self.data_val = PDBDataset(
+            folder=self.val_mmcifs_dir,
+            sampler=sampler_val,
+            sample_type=self.hparams.sample_type,
+            contiguous_weight=self.hparams.contiguous_weight,
+            spatial_weight=self.hparams.spatial_weight,
+            spatial_interface_weight=self.hparams.spatial_interface_weight,
+            crop_size=self.hparams.crop_size,
+            max_msas_per_chain=self.hparams.max_msas_per_chain,
+            max_templates_per_chain=self.hparams.max_templates_per_chain,
+            num_templates_per_chain=self.hparams.num_templates_per_chain,
+            kalign_binary_path=self.hparams.kalign_binary_path,
+            training=False,
+            sample_only_pdb_ids=sample_only_pdb_ids,
+            return_atom_inputs=True,
+            msa_dir=self.val_msa_dir,
+            templates_dir=self.val_templates_dir,
+        )
+
+        # evaluation set
+        sampler_test = (
+            None
+            if self.hparams.ablate_weighted_pdb_sampler
+            else WeightedPDBSampler(
+                chain_mapping_paths=self.test_chain_mapping_paths,
+                interface_mapping_path=self.test_interface_mapping_path,
+                batch_size=1,
+                pdb_ids_to_keep=sample_only_pdb_ids_list,
+            )
+        )
+        self.data_test = PDBDataset(
+            folder=self.test_mmcifs_dir,
+            sampler=sampler_test,
+            sample_type=self.hparams.sample_type,
+            contiguous_weight=self.hparams.contiguous_weight,
+            spatial_weight=self.hparams.spatial_weight,
+            spatial_interface_weight=self.hparams.spatial_interface_weight,
+            crop_size=self.hparams.crop_size,
+            max_msas_per_chain=self.hparams.max_msas_per_chain,
+            max_templates_per_chain=self.hparams.max_templates_per_chain,
+            num_templates_per_chain=self.hparams.num_templates_per_chain,
+            kalign_binary_path=self.hparams.kalign_binary_path,
+            training=False,
+            sample_only_pdb_ids=sample_only_pdb_ids,
+            return_atom_inputs=True,
+            msa_dir=self.test_msa_dir,
+            templates_dir=self.test_templates_dir,
+        )
+
+        # subsample dataset splits as requested
+
+        if exists(self.hparams.train_val_test_split):
+            train_count, val_count, test_count = self.hparams.train_val_test_split
+
+            train_indices = list(range(len(self.data_train)))
+            val_indices = list(range(len(self.data_val)))
+            test_indices = list(range(len(self.data_test)))
+
+            if (
+                self.hparams.shuffle_train_val_test_subsets
+                and not self.hparams.overfitting_train_examples
+            ):
+                random.shuffle(train_indices)  # nosec
+                random.shuffle(val_indices)  # nosec
+                random.shuffle(test_indices)  # nosec
+
+            self.data_train = torch.utils.data.Subset(self.data_train, train_indices[:train_count])
+            self.data_val = torch.utils.data.Subset(self.data_val, val_indices[:val_count])
+            self.data_test = torch.utils.data.Subset(self.data_test, test_indices[:test_count])
+
     def prepare_data(self) -> None:
         """Download data if needed. Lightning ensures that `self.prepare_data()` is called only
         within a single process on CPU, so you can safely add your downloading logic within. In
@@ -371,184 +556,6 @@ class PDBDataModule(LightningDataModule):
                     "Only a `batch_size_per_device` of 1 is supported for now "
                     "due to the input requirements of the `MultiChainPermutationAlignment` algorithm."
                 )
-
-        # load dataset splits only if not loaded already
-        if not self.data_train and not self.data_val and not self.data_test:
-            # sample only specific PDB IDs as requested
-
-            sample_only_pdb_ids = (
-                set(self.hparams.sample_only_pdb_ids)
-                if exists(self.hparams.sample_only_pdb_ids)
-                else None
-            )
-            sample_only_pdb_ids_list = (
-                list(sample_only_pdb_ids) if exists(sample_only_pdb_ids) else None
-            )
-
-            # data paths for each split
-
-            for split in ("train", "val", "test"):
-                path_split = split
-                if self.hparams.overfitting_train_examples:
-                    # NOTE: when overfitting to a subset of examples,
-                    # we want to load the training set multiple times
-                    # to ensure that the model sees the same examples
-                    # across training, validation, and testing
-                    path_split = "train"
-
-                setattr(
-                    self,
-                    f"{split}_mmcifs_dir",
-                    os.path.join(self.hparams.data_dir, f"{path_split}_mmcifs"),
-                )
-                setattr(
-                    self,
-                    f"{split}_clusterings_dir",
-                    os.path.join(
-                        self.hparams.data_dir, "data_caches", f"{path_split}_clusterings"
-                    ),
-                )
-                setattr(
-                    self,
-                    f"{split}_msa_dir",
-                    os.path.join(self.hparams.msa_dir, f"{path_split}_msas"),
-                )
-                setattr(
-                    self,
-                    f"{split}_templates_dir",
-                    os.path.join(self.hparams.templates_dir, f"{path_split}_templates"),
-                )
-                setattr(
-                    self,
-                    f"{split}_chain_mapping_paths",
-                    [
-                        os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
-                            "ligand_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
-                            "nucleic_acid_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
-                            "peptide_chain_cluster_mapping.csv",
-                        ),
-                        os.path.join(
-                            getattr(self, f"{split}_clusterings_dir"),
-                            "protein_chain_cluster_mapping.csv",
-                        ),
-                    ],
-                )
-                setattr(
-                    self,
-                    f"{split}_interface_mapping_path",
-                    os.path.join(
-                        getattr(self, f"{path_split}_clusterings_dir"),
-                        "interface_cluster_mapping.csv",
-                    ),
-                )
-
-            # training set
-
-            self.data_train = PDBDataset(
-                folder=self.train_mmcifs_dir,
-                sampler=WeightedPDBSampler(
-                    chain_mapping_paths=self.train_chain_mapping_paths,
-                    interface_mapping_path=self.train_interface_mapping_path,
-                    batch_size=1,
-                    pdb_ids_to_keep=sample_only_pdb_ids_list,
-                ),
-                sample_type=self.hparams.sample_type,
-                contiguous_weight=self.hparams.contiguous_weight,
-                spatial_weight=self.hparams.spatial_weight,
-                spatial_interface_weight=self.hparams.spatial_interface_weight,
-                crop_size=self.hparams.crop_size,
-                max_msas_per_chain=self.hparams.max_msas_per_chain,
-                max_templates_per_chain=self.hparams.max_templates_per_chain,
-                num_templates_per_chain=self.hparams.num_templates_per_chain,
-                kalign_binary_path=self.hparams.kalign_binary_path,
-                training=True,
-                sample_only_pdb_ids=sample_only_pdb_ids,
-                return_atom_inputs=True,
-                msa_dir=self.train_msa_dir,
-                templates_dir=self.train_templates_dir,
-            )
-
-            # validation set
-
-            self.data_val = PDBDataset(
-                folder=self.val_mmcifs_dir,
-                sampler=WeightedPDBSampler(
-                    chain_mapping_paths=self.val_chain_mapping_paths,
-                    interface_mapping_path=self.val_interface_mapping_path,
-                    batch_size=1,
-                    pdb_ids_to_keep=sample_only_pdb_ids_list,
-                ),
-                sample_type=self.hparams.sample_type,
-                contiguous_weight=self.hparams.contiguous_weight,
-                spatial_weight=self.hparams.spatial_weight,
-                spatial_interface_weight=self.hparams.spatial_interface_weight,
-                crop_size=self.hparams.crop_size,
-                max_msas_per_chain=self.hparams.max_msas_per_chain,
-                max_templates_per_chain=self.hparams.max_templates_per_chain,
-                num_templates_per_chain=self.hparams.num_templates_per_chain,
-                kalign_binary_path=self.hparams.kalign_binary_path,
-                training=False,
-                sample_only_pdb_ids=sample_only_pdb_ids,
-                return_atom_inputs=True,
-                msa_dir=self.val_msa_dir,
-                templates_dir=self.val_templates_dir,
-            )
-
-            # evaluation set
-
-            self.data_test = PDBDataset(
-                folder=self.test_mmcifs_dir,
-                sampler=WeightedPDBSampler(
-                    chain_mapping_paths=self.test_chain_mapping_paths,
-                    interface_mapping_path=self.test_interface_mapping_path,
-                    batch_size=1,
-                    pdb_ids_to_keep=sample_only_pdb_ids_list,
-                ),
-                sample_type=self.hparams.sample_type,
-                contiguous_weight=self.hparams.contiguous_weight,
-                spatial_weight=self.hparams.spatial_weight,
-                spatial_interface_weight=self.hparams.spatial_interface_weight,
-                crop_size=self.hparams.crop_size,
-                max_msas_per_chain=self.hparams.max_msas_per_chain,
-                max_templates_per_chain=self.hparams.max_templates_per_chain,
-                num_templates_per_chain=self.hparams.num_templates_per_chain,
-                kalign_binary_path=self.hparams.kalign_binary_path,
-                training=False,
-                sample_only_pdb_ids=sample_only_pdb_ids,
-                return_atom_inputs=True,
-                msa_dir=self.test_msa_dir,
-                templates_dir=self.test_templates_dir,
-            )
-
-            # subsample dataset splits as requested
-
-            if exists(self.hparams.train_val_test_split):
-                train_count, val_count, test_count = self.hparams.train_val_test_split
-
-                train_indices = list(range(len(self.data_train)))
-                val_indices = list(range(len(self.data_val)))
-                test_indices = list(range(len(self.data_test)))
-
-                if (
-                    self.hparams.shuffle_train_val_test_subsets
-                    and not self.hparams.overfitting_train_examples
-                ):
-                    random.shuffle(train_indices)  # nosec
-                    random.shuffle(val_indices)  # nosec
-                    random.shuffle(test_indices)  # nosec
-
-                self.data_train = torch.utils.data.Subset(
-                    self.data_train, train_indices[:train_count]
-                )
-                self.data_val = torch.utils.data.Subset(self.data_val, val_indices[:val_count])
-                self.data_test = torch.utils.data.Subset(self.data_test, test_indices[:test_count])
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Create and return the train dataloader.

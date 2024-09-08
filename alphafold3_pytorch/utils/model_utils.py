@@ -650,6 +650,24 @@ def package_available(package_name: str) -> bool:
         return False
 
 
+@typecheck
+def save_args_and_kwargs(fn):
+    """Save the arguments and keyword arguments of a function as instance variables.
+
+    :param fn: The function to wrap.
+    :return: The wrapped function.
+    """
+
+    @wraps(fn)
+    def inner(self, *args, **kwargs):
+        self._args_and_kwargs = (args, kwargs)
+        self._version = importlib.metadata.version("alphafold3_pytorch_lightning_hydra")
+
+        return fn(self, *args, **kwargs)
+
+    return inner
+
+
 # functions for deriving the frames for ligands
 # this follows the logic from Alphafold3 Supplementary section 4.3.2
 
