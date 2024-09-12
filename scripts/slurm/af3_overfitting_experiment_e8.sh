@@ -25,7 +25,7 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.5_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.50_dev.sif"
 
 # Set number of PyTorch (GPU) processes per node to be spawned by torchrun - NOTE: One for each GCD
 NUM_PYTORCH_PROCESSES=4
@@ -36,10 +36,6 @@ export OMP_NUM_THREADS=8
 RDZV_HOST=$(hostname)
 export RDZV_HOST
 export RDZV_PORT=29400
-
-# Set debugging flags (optional)
-export NCCL_DEBUG=INFO
-export PYTHONFAULTHANDLER=1
 
 # NOTE: The following `srun` command gives all the available resources to
 # `torchrun` which will then distribute them internally to the processes
@@ -58,7 +54,7 @@ srun -c 64 singularity exec \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 \
         torchrun \
         --nnodes=$SLURM_JOB_NUM_NODES \
         --nproc_per_node=$NUM_PYTORCH_PROCESSES \

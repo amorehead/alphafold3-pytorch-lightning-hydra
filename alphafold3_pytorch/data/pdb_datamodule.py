@@ -297,7 +297,6 @@ class PDBDataModule(LightningDataModule):
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
-        num_tax_id_mappings_to_keep: int | None = None,
         max_msas_per_chain: int | None = None,
         max_num_msa_tokens: int | None = None,
         max_templates_per_chain: int | None = None,

@@ -19,7 +19,7 @@ check_val_every_n_epoch: 1
 # makes training slower but gives more reproducibility than just setting seeds
 deterministic: False
 
-# if `gradient_clip_val` is not `null`, gradients will be norm-clipped by an upper bound of `gradient_clip_val` during training
+# if `gradient_clip_val` is not `null` or `0.0`, gradients will be norm-clipped by an upper bound of `gradient_clip_val` during training
 gradient_clip_algorithm: norm
 gradient_clip_val: 10.0
 
