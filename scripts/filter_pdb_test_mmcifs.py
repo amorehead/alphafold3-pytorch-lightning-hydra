@@ -38,7 +38,7 @@ from alphafold3_pytorch.common.paper_constants import (
 from alphafold3_pytorch.data import mmcif_parsing, mmcif_writing
 from alphafold3_pytorch.data.mmcif_parsing import MmcifObject
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 from scripts.filter_pdb_train_mmcifs import (
     FILTER_STRUCTURE_MAX_SECONDS_PER_INPUT,
     filter_pdb_release_date,
@@ -123,7 +123,7 @@ def filter_structure_with_timeout(
         max_resolution=4.5,
         max_tokens=5120,
     )
-    if not exists(mmcif_object):
+    if not_exists(mmcif_object):
         print(f"Skipping target due to prefiltering: {file_id}")
         return
     # Filtering of bioassemblies

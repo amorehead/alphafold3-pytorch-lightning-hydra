@@ -45,7 +45,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/milot-mirdita">Milot</a> for generating MSA and template inputs as well as optimizing the PDB dataset clustering script!
 
-- <a href="https://github.com/vandrw">Andrei</a> for working on the weighted PDB dataset sampling!
+- <a href="https://github.com/vandrw">Andrei</a> for working on the weighted PDB dataset sampling and for taking on the gradio frontend interface!
 
 - <a href="https://github.com/tanjimin">Jimin</a> for submitting a small fix to an issue with the coordinates being passed into `WeightedRigidAlign`
 
@@ -59,7 +59,7 @@ A visualization of the molecules of life used in the repository can be seen and 
 
 - <a href="https://github.com/dhuvik">Dhuvi</a> for fixing a bug related to metal ion molecule ID assignment for `Alphafold3Inputs`!
 
-- Tom (from the Discord channel) for identifying a discrepancy between this codebase's distogram and template unit vector computations and those of OpenFold (and <a href="https://github.com/vandrw">Andrei</a> for addressing these issues)!
+- Tom (from the Discord channel) for identifying a discrepancy between this codebase's distogram and template unit vector computations and those of OpenFold (and <a href="https://github.com/vandrw">Andrei</a> for helping address the distogram issue)!
 
 - <a href="https://github.com/Kaihui-Cheng">Kaihui</a> for identifying a bug in how non-standard atoms were handled in polymer residues!
 
@@ -261,12 +261,7 @@ An example with molecule level input handling
 
 ```python
 import torch
-
-from alphafold3_pytorch import (
-    Alphafold3,
-    Alphafold3Input,
-    alphafold3_inputs_to_batched_atom_input
-)
+from alphafold3_pytorch import Alphafold3, Alphafold3Input
 
 contrived_protein = 'AG'
 
@@ -285,8 +280,6 @@ eval_alphafold3_input = Alphafold3Input(
     proteins = [contrived_protein]
 )
 
-batched_atom_input = alphafold3_inputs_to_batched_atom_input(train_alphafold3_input, atoms_per_window = 27)
-
 # training
 
 alphafold3 = Alphafold3(
@@ -294,7 +287,6 @@ alphafold3 = Alphafold3(
     dim_atompair_inputs = 5,
     atoms_per_window = 27,
     dim_template_feats = 108,
-    num_dist_bins = 64,
     num_molecule_mods = 0,
     confidence_head_kwargs = dict(
         pairformer_depth = 1
@@ -315,15 +307,13 @@ alphafold3 = Alphafold3(
     )
 )
 
-loss = alphafold3(**batched_atom_input.model_forward_dict())
+loss = alphafold3.forward_with_alphafold3_inputs([train_alphafold3_input])
 loss.backward()
 
 # sampling
 
-batched_eval_atom_input = alphafold3_inputs_to_batched_atom_input(eval_alphafold3_input, atoms_per_window = 27)
-
 alphafold3.eval()
-sampled_atom_pos = alphafold3(**batched_eval_atom_input.model_forward_dict())
+sampled_atom_pos = alphafold3.forward_with_alphafold3_inputs(eval_alphafold3_input)
 
 assert sampled_atom_pos.shape == (1, (5 + 4), 3)
 ```
@@ -417,7 +407,7 @@ python scripts/cluster_pdb_test_mmcifs.py --mmcif_dir <mmcif_dir> --reference_1_
 
 **Note**: The `--clustering_filtered_pdb_dataset` flag is recommended when clustering the filtered PDB dataset as curated using the scripts above, as this flag will enable faster runtimes in this context (since filtering leaves each chain's residue IDs 1-based). However, this flag must **not** be provided when clustering other (i.e., non-PDB) datasets of mmCIF files. Otherwise, interface clustering may be performed incorrectly, as these datasets' mmCIF files may not use strict 1-based residue indexing for each chain.
 
-**Note**: One can instead download preprocessed (i.e., filtered) mmCIF (`train`/`val`/`test`) files (~25GB, comprising 148k complexes) and chain/interface clustering (`train`/`val`/`test`) files (~3GB) for the PDB's `20240101` AWS snapshot via a [shared OneDrive folder](https://mailmissouri-my.sharepoint.com/:f:/g/personal/acmwhb_umsystem_edu/EqU8tjUmmKxJr-FAlq4tzaIBi2TIBtmw5Vl3k_kmgNlepA?e=mzlyv6). Each of these `tar.gz` archives should be decompressed within the `data/pdb_data/` directory e.g., via `tar -xzf data_caches.tar.gz -C data/pdb_data/`.
+**Note**: One can instead download preprocessed (i.e., filtered) mmCIF (`train`/`val`/`test`) files (~25GB, comprising 148k complexes) and chain/interface clustering (`train`/`val`/`test`) files (~3GB) for the PDB's `20240101` AWS snapshot via a [shared OneDrive folder](https://mailmissouri-my.sharepoint.com/:f:/g/personal/acmwhb_umsystem_edu/EqU8tjUmmKxJr-FAlq4tzaIBi2TIBtmw5Vl3k_kmgNlepA?e=mzlyv6). Each of these `tar.gz` archives should be decompressed within the `data/pdb_data/` directory e.g., via `tar -xzf data_caches.tar.gz -C data/pdb_data/`. Moreover, mappings of UniProt accession IDs to taxonomic IDs for MSA pairing can be downloaded and extracted via the commands `wget https://colabfold.steineggerlab.workers.dev/af3/uniref30_2202_accession_mapping.tsv.gz -P data/pdb_data/data_caches/` and `gunzip data/pdb_data/data_caches/uniref30_2202_accession_mapping.tsv.gz`.
 
 </details>
 

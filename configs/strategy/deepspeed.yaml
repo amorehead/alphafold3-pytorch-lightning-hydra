@@ -7,5 +7,5 @@ offload_optimizer: false
 offload_parameters: false
 partition_activations: false
 cpu_checkpointing: false
-contiguous_gradients: true
-overlap_comm: true
+contiguous_gradients: false
+overlap_comm: false

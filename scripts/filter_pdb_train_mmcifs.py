@@ -67,7 +67,7 @@ from alphafold3_pytorch.utils.tensor_typing import (
     TokenType,
     typecheck,
 )
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 
 # Constants
 
@@ -734,7 +734,7 @@ def filter_structure_with_timeout(
         min_cutoff_date=min_cutoff_date,
         max_cutoff_date=max_cutoff_date,
     )
-    if not exists(mmcif_object):
+    if not_exists(mmcif_object):
         print(f"Skipping target due to prefiltering: {file_id}")
         return
     # Filtering of bioassemblies

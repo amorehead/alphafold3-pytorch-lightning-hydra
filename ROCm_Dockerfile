@@ -1,7 +1,6 @@
-FROM quay.io/pawsey/pytorch:2.2.0-rocm5.7.3
+FROM rocm/pytorch:rocm6.2_ubuntu22.04_py3.10_pytorch_release_2.3.0
 
 ## Add System Dependencies
-# NOTE: Needs libxrender1 ImportError: libXrender.so.1: cannot open shared object file: No such file or directory (from pdbeccdutils.core import ccd_reader) throws the error
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive \
     && apt-get install --no-install-recommends -y \
@@ -32,10 +31,9 @@ RUN curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
 ENV CARGO_PATH=/root/.cargo
 
 ## Set environment variables
-ENV ROCM_MAJOR=5
-ENV ROCM_MINOR=7
-ENV ROCM_PATCH=3
-ENV ROCM_RELEASE=$ROCM_MAJOR.$ROCM_MINOR.$ROCM_PATCH
+ENV ROCM_MAJOR=6
+ENV ROCM_MINOR=2
+ENV ROCM_RELEASE=$ROCM_MAJOR.$ROCM_MINOR
 
 ENV ROCM_PATH=/opt/rocm-$ROCM_RELEASE
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROCM_PATH/lib

@@ -24,9 +24,13 @@ from alphafold3_pytorch.models.components.inputs import (
     PDBInput,
     maybe_transform_to_atom_inputs,
 )
+from alphafold3_pytorch.utils.data_utils import load_tsv_to_dict
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
+from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
+
+log = RankedLogger(__name__, rank_zero_only=False)
 
 # dataloader and collation fn
 
@@ -66,6 +70,10 @@ def collate_inputs_to_batched_atom_input(
             ), "No `AtomInput` objects could be created for the current batch."
             atom_inputs = random.choices(atom_inputs, k=len(inputs))  # nosec
     else:
+        assert all(isinstance(i, AtomInput) for i in inputs), (
+            "When `transform_to_atom_inputs=False`, all provided "
+            "inputs must be of type `AtomInput`."
+        )
         atom_inputs = inputs
 
     assert all(isinstance(i, AtomInput) for i in atom_inputs), (
@@ -152,7 +160,7 @@ def collate_inputs_to_batched_atom_input(
         padded_inputs = []
 
         for inp in grouped:
-            if not exists(inp):
+            if not_exists(inp):
                 padded_inputs.append(default_tensor)
                 continue
 
@@ -289,9 +297,12 @@ class PDBDataModule(LightningDataModule):
         spatial_weight: float = 0.4,
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
+        num_tax_id_mappings_to_keep: int | None = None,
         max_msas_per_chain: int | None = None,
+        max_num_msa_tokens: int | None = None,
         max_templates_per_chain: int | None = None,
         num_templates_per_chain: int | None = None,
+        max_num_template_tokens: int | None = None,
         kalign_binary_path: str | None = None,
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
@@ -433,8 +444,10 @@ class PDBDataModule(LightningDataModule):
             spatial_interface_weight=self.hparams.spatial_interface_weight,
             crop_size=self.hparams.crop_size,
             max_msas_per_chain=self.hparams.max_msas_per_chain,
+            max_num_msa_tokens=self.hparams.max_num_msa_tokens,
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
+            max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=True,
             sample_only_pdb_ids=sample_only_pdb_ids,
@@ -463,8 +476,10 @@ class PDBDataModule(LightningDataModule):
             spatial_interface_weight=self.hparams.spatial_interface_weight,
             crop_size=self.hparams.crop_size,
             max_msas_per_chain=self.hparams.max_msas_per_chain,
+            max_num_msa_tokens=self.hparams.max_num_msa_tokens,
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
+            max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             sample_only_pdb_ids=sample_only_pdb_ids,
@@ -493,8 +508,10 @@ class PDBDataModule(LightningDataModule):
             spatial_interface_weight=self.hparams.spatial_interface_weight,
             crop_size=self.hparams.crop_size,
             max_msas_per_chain=self.hparams.max_msas_per_chain,
+            max_num_msa_tokens=self.hparams.max_num_msa_tokens,
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
+            max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             sample_only_pdb_ids=sample_only_pdb_ids,
@@ -545,7 +562,7 @@ class PDBDataModule(LightningDataModule):
         :param stage: The stage to setup. Either `"fit"`, `"validate"`, `"test"`, or `"predict"`. Defaults to ``None``.
         """
         # Divide batch size by the number of devices.
-        if self.trainer is not None:
+        if exists(self.trainer):
             if self.hparams.batch_size % self.trainer.world_size != 0:
                 raise RuntimeError(
                     f"Batch size ({self.hparams.batch_size}) is not divisible by the number of devices ({self.trainer.world_size})."

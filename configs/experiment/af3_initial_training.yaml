@@ -25,6 +25,11 @@ seed: 12345
 
 data:
   crop_size: 384
+  max_msas_per_chain: 16384
+  max_num_msa_tokens: 41943040
+  max_templates_per_chain: 20
+  num_templates_per_chain: 4
+  max_num_template_tokens: 5120
 
 logger:
   wandb:
@@ -36,6 +41,6 @@ logger:
 model:
   parameters_initialized_from: random
   train_structure_and_distogram: true
-  train_pae_head: false
+  train_pae_head: true
   diffusion_add_smooth_lddt_loss: true
-  diffusion_add_bond_loss: false
+  diffusion_add_bond_loss: true

@@ -14,6 +14,7 @@ from Bio import PDB
 from Bio.Data import PDBData
 
 from alphafold3_pytorch.utils.data_utils import is_polymer, is_water, matrix_rotate
+from alphafold3_pytorch.utils.utils import not_exists
 
 # Type aliases:
 ChainId = str
@@ -769,7 +770,7 @@ def parse_mmcif_object(
 
     # Crash if an error is encountered. Any parsing errors should have
     # been dealt with beforehand (e.g., at the alignment stage).
-    if parsing_result.mmcif_object is None:
+    if not_exists(parsing_result.mmcif_object):
         raise list(parsing_result.errors.values())[0]
 
     return parsing_result.mmcif_object

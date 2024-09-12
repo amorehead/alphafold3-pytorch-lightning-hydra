@@ -53,7 +53,7 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 from alphafold3_pytorch.models.components.inputs import CCD_COMPONENTS_SMILES
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 from scripts.cluster_pdb_train_mmcifs import (
     CHAIN_INTERFACES,
     CHAIN_SEQUENCES,
@@ -239,12 +239,12 @@ def is_novel_ligand(
     ligand sequences."""
     fpgen = AllChem.GetRDKitFPGenerator()
     ligand_smiles = CCD_COMPONENTS_SMILES.get(ligand_sequence, None)
-    if not exists(ligand_smiles):
+    if not_exists(ligand_smiles):
         if verbose:
             logger.warning(f"Could not find SMILES for ligand sequence: {ligand_sequence}")
         return False
     ligand_mol = Chem.MolFromSmiles(ligand_smiles)
-    if not exists(ligand_mol):
+    if not_exists(ligand_mol):
         if verbose:
             logger.warning(
                 f"Could not generate RDKit molecule for ligand sequence: {ligand_sequence}"
@@ -490,7 +490,7 @@ def filter_chains_by_molecule_type(
                             chain_id in interface_chain_id.split("+")
                             for interface_chain_id in interface_chain_ids[structure_id]
                         )
-                    ) or not exists(interface_chain_ids):
+                    ) or not_exists(interface_chain_ids):
                         filtered_chain_sequences.add(sequence)
     return list(filtered_chain_sequences)
 
@@ -763,13 +763,13 @@ def filter_to_low_homology_sequences(
     reference_ligand_fps = []
     for reference_ligand_ccd_code in reference_ligand_ccd_codes:
         reference_ligand_smiles = CCD_COMPONENTS_SMILES.get(reference_ligand_ccd_code, None)
-        if not exists(reference_ligand_smiles):
+        if not_exists(reference_ligand_smiles):
             logger.warning(
                 f"Could not find SMILES for reference CCD ligand: {reference_ligand_ccd_code}"
             )
             continue
         reference_ligand_mol = Chem.MolFromSmiles(reference_ligand_smiles)
-        if not exists(reference_ligand_mol):
+        if not_exists(reference_ligand_mol):
             logger.warning(
                 f"Could not generate RDKit molecule for reference CCD ligand: {reference_ligand_ccd_code}"
             )

@@ -23,7 +23,7 @@ from alphafold3_pytorch.common import (
 from alphafold3_pytorch.data import mmcif_parsing
 from alphafold3_pytorch.utils.data_utils import deep_merge_dicts, is_polymer
 from alphafold3_pytorch.utils.tensor_typing import IntType, typecheck
-from alphafold3_pytorch.utils.utils import exists, np_mode
+from alphafold3_pytorch.utils.utils import exists, not_exists, np_mode
 
 MMCIF_PREFIXES_TO_DROP_POST_PARSING = [
     "_atom_site.",
@@ -926,7 +926,7 @@ def from_mmcif_string(
 
     # Crash if an error is encountered. Any parsing errors should have
     # been dealt with beforehand (e.g., at the alignment stage).
-    if parsing_result.mmcif_object is None:
+    if not_exists(parsing_result.mmcif_object):
         raise list(parsing_result.errors.values())[0]
 
     return _from_mmcif_object(

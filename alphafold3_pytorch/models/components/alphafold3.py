@@ -86,6 +86,9 @@ from torch.nn import Linear, Module, ModuleList, Sequential
 from tqdm import tqdm
 
 from alphafold3_pytorch.common.biomolecule import get_residue_constants
+from alphafold3_pytorch.data.pdb_datamodule import (
+    alphafold3_inputs_to_batched_atom_input,
+)
 from alphafold3_pytorch.models.components.attention import (
     Attention,
     full_attn_bias_to_windowed,
@@ -108,6 +111,7 @@ from alphafold3_pytorch.models.components.inputs import (
     IS_RNA_INDEX,
     NUM_MOLECULE_IDS,
     NUM_MSA_ONE_HOT,
+    Alphafold3Input,
     BatchedAtomInput,
     hard_validate_atom_indices_ascending,
 )
@@ -115,6 +119,7 @@ from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import (
     ExpressCoordinatesInFrame,
     RigidFrom3Points,
+    RigidFromReference3Points,
     batch_repeat_interleave,
     batch_repeat_interleave_pairwise,
     calculate_weighted_rigid_align_weights,
@@ -146,7 +151,7 @@ from alphafold3_pytorch.utils.tensor_typing import (
     Int,
     typecheck,
 )
-from alphafold3_pytorch.utils.utils import default, exists, identity
+from alphafold3_pytorch.utils.utils import default, exists, identity, not_exists
 
 # constants
 
@@ -272,7 +277,7 @@ class Dropout(Module):
                 t.ndim == 4
             ), "Tensor `t` must consist of 4 dimensions for row/col structured dropout."
 
-        if not exists(self.dropout_type):
+        if not_exists(self.dropout_type):
             return self.dropout(t)
 
         if self.dropout_type == "row":
@@ -529,7 +534,7 @@ class AttentionPairBias(Module):
                 not windowed_pairwise
             ), "Cannot pass in windowed pairwise representation if no `window_size` given to `AttentionPairBias`."
             assert (
-                not exists(windowed_attn_bias) or not windowed_attn_bias
+                not_exists(windowed_attn_bias) or not windowed_attn_bias
             ), "Cannot pass in windowed attention bias if no `window_size` is set for `AttentionPairBias`."
 
         # attention bias preparation with further addition from pairwise repr
@@ -1746,7 +1751,6 @@ class DiffusionTransformer(Module):
         attn_num_memory_kv=False,
         trans_expansion_factor=2,
         num_register_tokens=0,
-        serial=True,
         add_residual=True,
         use_linear_attn=False,
         checkpoint=False,
@@ -1810,22 +1814,17 @@ class DiffusionTransformer(Module):
                 )
             )
 
-        assert not (
-            not serial and checkpoint
-        ), "Checkpointing can only be used for the serial version of the DiffusionTransformer."
-
         self.checkpoint = checkpoint
 
         self.layers = layers
 
-        self.serial = serial
         self.add_residual = add_residual
 
         self.has_registers = num_register_tokens > 0
         self.num_registers = num_register_tokens
 
         if self.has_registers:
-            assert not exists(
+            assert not_exists(
                 attn_window_size
             ), "Register tokens are disabled for windowed attention."
             self.registers = nn.Parameter(torch.zeros(num_register_tokens, dim))
@@ -1944,52 +1943,6 @@ class DiffusionTransformer(Module):
         return noised_repr
 
     @typecheck
-    def to_parallel_layers(
-        self,
-        noised_repr: Float["b n d"],  # type: ignore
-        *,
-        single_repr: Float["b n ds"],  # type: ignore
-        pairwise_repr: Float["b n n dp"] | Float["b nw w (w*2) dp"],  # type: ignore
-        mask: Bool["b n"] | None = None,  # type: ignore
-        windowed_mask: Bool["b nw w (w*2)"] | None = None,  # type: ignore
-    ):
-        """Perform the forward pass with parallel layers.
-
-        :param noised_repr: The noised representation tensor.
-        :param single_repr: The single representation tensor.
-        :param pairwise_repr: The pairwise representation tensor.
-        :param mask: The mask tensor.
-        :param windowed_mask: The windowed mask tensor.
-        :return: The output tensor.
-        """
-        for linear_attn, colt5_attn, attn, transition in self.layers:
-            if exists(linear_attn):
-                noised_repr = linear_attn(noised_repr, mask=mask) + noised_repr
-
-            if exists(colt5_attn):
-                noised_repr = colt5_attn(noised_repr, mask=mask) + noised_repr
-
-            attn_out = attn(
-                noised_repr,
-                cond=single_repr,
-                pairwise_repr=pairwise_repr,
-                mask=mask,
-                windowed_mask=windowed_mask,
-            )
-
-            ff_out = transition(noised_repr, cond=single_repr)
-
-            # in the algorithm, they omitted the residual, but it could be an error
-            # attn + ff + residual was used in GPT-J and PaLM, but later found to be unstable configuration, so it seems unlikely attn + ff would work
-            # but in the case they figured out something we have not, you can use their exact formulation by setting `serial = False` and `add_residual = False`
-
-            residual = noised_repr if self.add_residual else 0.0
-
-            noised_repr = ff_out + attn_out + residual
-
-        return noised_repr
-
-    @typecheck
     def forward(
         self,
         noised_repr: Float["b n d"],  # type: ignore
@@ -2008,7 +1961,7 @@ class DiffusionTransformer(Module):
         :param windowed_mask: The windowed mask tensor.
         :return: The output tensor.
         """
-        w, serial = self.attn_window_size, self.serial
+        w = self.attn_window_size
         has_windows = exists(w)
 
         # handle windowing
@@ -2035,12 +1988,10 @@ class DiffusionTransformer(Module):
 
         # main transformer
 
-        if serial and should_checkpoint(self, (noised_repr, single_repr, pairwise_repr)):
+        if should_checkpoint(self, (noised_repr, single_repr, pairwise_repr)):
             to_layers_fn = self.to_checkpointed_serial_layers
-        elif serial:
-            to_layers_fn = self.to_serial_layers
         else:
-            to_layers_fn = self.to_parallel_layers
+            to_layers_fn = self.to_serial_layers
 
         noised_repr = to_layers_fn(
             noised_repr,
@@ -2115,7 +2066,6 @@ class DiffusionModule(Module):
         token_transformer_heads=16,
         atom_decoder_depth=3,
         atom_decoder_heads=4,
-        serial=True,
         atom_encoder_kwargs: dict = dict(),
         atom_decoder_kwargs: dict = dict(),
         token_transformer_kwargs: dict = dict(),
@@ -2179,7 +2129,6 @@ class DiffusionModule(Module):
             attn_window_size=atoms_per_window,
             depth=atom_encoder_depth,
             heads=atom_encoder_heads,
-            serial=serial,
             use_linear_attn=use_linear_attn,
             linear_attn_kwargs=linear_attn_kwargs,
             checkpoint=checkpoint,
@@ -2203,7 +2152,6 @@ class DiffusionModule(Module):
             dim_pairwise=dim_pairwise,
             depth=token_transformer_depth,
             heads=token_transformer_heads,
-            serial=serial,
             checkpoint=checkpoint,
             **token_transformer_kwargs,
         )
@@ -2221,7 +2169,6 @@ class DiffusionModule(Module):
             attn_window_size=atoms_per_window,
             depth=atom_decoder_depth,
             heads=atom_decoder_heads,
-            serial=serial,
             use_linear_attn=use_linear_attn,
             linear_attn_kwargs=linear_attn_kwargs,
             checkpoint=checkpoint,
@@ -2807,20 +2754,21 @@ class ElucidatedAtomDiffusion(Module):
             self.P_mean + self.P_std * torch.randn((batch_size,), device=self.device)
         ).exp() * self.sigma_data
 
+    @typecheck
     def forward(
         self,
         atom_pos_ground_truth: Float["b m 3"],  # type: ignore
         atom_mask: Bool["b m"],  # type: ignore
         atom_feats: Float["b m da"],  # type: ignore
-        atompair_feats: Float["b m m dap"],  # type: ignore
+        atompair_feats: Float["b m m dap"] | Float["b nw w (w*2) dap"],  # type: ignore
         mask: Bool["b n"],  # type: ignore
         single_trunk_repr: Float["b n dst"],  # type: ignore
         single_inputs_repr: Float["b n dsi"],  # type: ignore
         pairwise_trunk: Float["b n n dpt"],  # type: ignore
         pairwise_rel_pos_feats: Float["b n n dpr"],  # type: ignore
         molecule_atom_lens: Int["b n"],  # type: ignore
-        molecule_atom_indices: Int["b n"],  # type: ignore
         token_bonds: Bool["b n n"],  # type: ignore
+        molecule_atom_indices: Int["b n"] | None = None,  # type: ignore
         missing_atom_mask: Bool["b m"] | None = None,  # type: ignore
         atom_parent_ids: Int["b m"] | None = None,  # type: ignore
         return_denoised_pos=False,
@@ -2846,8 +2794,8 @@ class ElucidatedAtomDiffusion(Module):
         :param pairwise_trunk: The pairwise trunk tensor.
         :param pairwise_rel_pos_feats: The pairwise relative position features tensor.
         :param molecule_atom_lens: The molecule atom lengths tensor.
-        :param molecule_atom_indices: The molecule atom indices tensor.
         :param token_bonds: The token bonds tensor.
+        :param molecule_atom_indices: The molecule atom indices tensor.
         :param missing_atom_mask: The missing atom mask tensor.
         :param atom_parent_ids: The atom parent IDs tensor.
         :param return_denoised_pos: Whether to return the denoised position.
@@ -2916,7 +2864,7 @@ class ElucidatedAtomDiffusion(Module):
 
         # section 4.2 - multi-chain permutation alignment
 
-        if single_structure_input:
+        if exists(molecule_atom_indices) and single_structure_input:
             try:
                 atom_pos_aligned_ground_truth = self.multi_chain_permutation_alignment(
                     pred_coords=denoised_atom_pos,
@@ -3119,7 +3067,7 @@ class WeightedRigidAlign(Module):
 
         batch_size, num_points, dim = pred_coords.shape
 
-        if not exists(weights):
+        if not_exists(weights):
             # if no weights are provided, assume uniform weights
             weights = torch.ones_like(pred_coords[..., 0])
 
@@ -3899,7 +3847,7 @@ class MultiChainPermutationAlignment(Module):
         """
         num_atoms = pred_coords.shape[1]
 
-        if not exists(additional_molecule_feats) or not exists(is_molecule_types):
+        if not_exists(additional_molecule_feats) or not_exists(is_molecule_types):
             # NOTE: If no chains or no molecule types are specified,
             # we cannot perform multi-chain permutation alignment.
             true_coords.detach_()
@@ -4801,7 +4749,7 @@ class ComputeConfidenceScore(Module):
         :return: pTM
         """
 
-        if not exists(residue_weights):
+        if not_exists(residue_weights):
             residue_weights = torch.ones_like(has_frame)
 
         residue_weights = residue_weights * has_frame
@@ -5548,7 +5496,7 @@ class ComputeModelSelectionScore(Module):
         :return: [b] lddt
         """
 
-        if not exists(coords_mask):
+        if not_exists(coords_mask):
             coords_mask = torch.ones_like(asym_mask_a)
 
         if asym_mask_a.ndim == 1:
@@ -6500,6 +6448,19 @@ class Alphafold3(Module):
         return self
 
     @typecheck
+    def forward_with_alphafold3_inputs(
+        self, alphafold3_inputs: Alphafold3Input | list[Alphafold3Input], **kwargs
+    ):
+        """Run the forward pass of AlphaFold 3 with Alphafold3Inputs."""
+        if not isinstance(alphafold3_inputs, list):
+            alphafold3_inputs = [alphafold3_inputs]
+
+        batched_atom_inputs = alphafold3_inputs_to_batched_atom_input(
+            alphafold3_inputs, atoms_per_window=self.w
+        )
+        return self.forward(**batched_atom_inputs.model_forward_dict(), **kwargs)
+
+    @typecheck
     def forward(
         self,
         *,
@@ -6697,6 +6658,7 @@ class Alphafold3(Module):
 
         # get atom sequence length and molecule sequence length depending on whether using packed atomic seq
 
+        batch_size = molecule_atom_lens.shape[0]
         seq_len = molecule_atom_lens.shape[-1]
 
         # embed inputs
@@ -6796,6 +6758,7 @@ class Alphafold3(Module):
         else:
             seq_arange = torch.arange(seq_len, device=self.device)
             token_bonds = einx.subtract("i, j -> i j", seq_arange, seq_arange).abs() == 1
+            token_bonds = repeat(token_bonds, "i j -> b i j", b=batch_size)
 
         token_bonds_feats = self.token_bond_to_pairwise_feat(token_bonds.type(dtype))
 
@@ -6842,6 +6805,7 @@ class Alphafold3(Module):
                     templates=templates,
                     template_mask=template_mask,
                     pairwise_repr=pairwise,
+                    mask=mask,
                 )
 
                 pairwise = embedded_template + pairwise
@@ -6855,6 +6819,7 @@ class Alphafold3(Module):
                     pairwise_repr=pairwise,
                     msa_mask=msa_mask,
                     additional_msa_feats=additional_msa_feats,
+                    mask=mask,
                 )
 
                 pairwise = embedded_msa + pairwise
@@ -6979,7 +6944,7 @@ class Alphafold3(Module):
 
         molecule_pos = None
 
-        if not exists(distance_labels) and atom_pos_given and exists(distogram_atom_indices):
+        if not_exists(distance_labels) and atom_pos_given and exists(distogram_atom_indices):
             distogram_pos = atom_pos
 
             if not self.distogram_atom_resolution:
@@ -7023,7 +6988,6 @@ class Alphafold3(Module):
 
         # otherwise, noise and make it learn to denoise
 
-        batch_size = atom_inputs.shape[0]
         calc_diffusion_loss = exists(atom_pos)
 
         if calc_diffusion_loss:
@@ -7240,7 +7204,7 @@ class Alphafold3(Module):
             if atom_pos_given and exists(atom_indices_for_frame):
                 denoised_molecule_pos = None
 
-                if not exists(molecule_pos):
+                if not_exists(molecule_pos):
                     assert exists(
                         distogram_atom_indices
                     ), "`distogram_atom_indices` must be passed in for calculating non-atomic PAE labels"

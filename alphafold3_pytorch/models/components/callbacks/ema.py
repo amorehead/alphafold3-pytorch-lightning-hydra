@@ -140,7 +140,7 @@ class EMA(Callback):
 
         if (
             ckpt_path
-            and checkpoint_callback is not None
+            and exists(checkpoint_callback)
             and "EMA" in type(checkpoint_callback).__name__
         ):
             ext = checkpoint_callback.FILE_EXTENSION
@@ -178,7 +178,7 @@ def ema_update(ema_model_tuple, current_model_tuple, decay):
 
 def run_ema_update_cpu(ema_model_tuple, current_model_tuple, decay, pre_sync_stream=None):
     """Run EMA update on CPU."""
-    if pre_sync_stream is not None:
+    if exists(pre_sync_stream):
         pre_sync_stream.synchronize()
 
     ema_update(ema_model_tuple, current_model_tuple, decay)
@@ -274,10 +274,7 @@ class EMAOptimizer(torch.optim.Optimizer):
             )
             self.rebuild_ema_params = False
 
-        if (
-            getattr(self.optimizer, "_step_supports_amp_scaling", False)
-            and grad_scaler is not None
-        ):
+        if getattr(self.optimizer, "_step_supports_amp_scaling", False) and exists(grad_scaler):
             loss = self.optimizer.step(closure=closure, grad_scaler=grad_scaler)
         else:
             loss = self.optimizer.step(closure)
@@ -294,7 +291,7 @@ class EMAOptimizer(torch.optim.Optimizer):
     @torch.no_grad()
     def update(self):
         """Update the EMA parameters."""
-        if self.stream is not None:
+        if exists(self.stream):
             self.stream.wait_stream(torch.cuda.current_stream())
 
         with torch.cuda.stream(self.stream):
@@ -355,10 +352,10 @@ class EMAOptimizer(torch.optim.Optimizer):
 
     def join(self):
         """Wait for the update to complete."""
-        if self.stream is not None:
+        if exists(self.stream):
             self.stream.synchronize()
 
-        if self.thread is not None:
+        if exists(self.thread):
             self.thread.join()
 
     def state_dict(self):
@@ -419,7 +416,7 @@ class EMAModelCheckpoint(ModelCheckpoint):
     def _save_checkpoint(self, trainer: "pl.Trainer", filepath: str) -> None:
         """Saves the checkpoint file and the EMA checkpoint file if it exists."""
         ema_callback = self._ema_callback(trainer)
-        if ema_callback is not None:
+        if exists(ema_callback):
             with ema_callback.save_original_optimizer_state(trainer):
                 super()._save_checkpoint(trainer, filepath)
 
@@ -436,7 +433,7 @@ class EMAModelCheckpoint(ModelCheckpoint):
         """Removes the checkpoint file and the EMA checkpoint file if it exists."""
         super()._remove_checkpoint(trainer, filepath)
         ema_callback = self._ema_callback(trainer)
-        if ema_callback is not None:
+        if exists(ema_callback):
             # remove EMA copy of the state dict as well.
             filepath = self._ema_format_filepath(filepath)
             super()._remove_checkpoint(trainer, filepath)

@@ -3,6 +3,8 @@ import platform
 import pkg_resources
 from lightning.fabric.accelerators import TPUAccelerator
 
+from alphafold3_pytorch.utils.utils import exists
+
 
 def _package_available(package_name: str) -> bool:
     """Check if a package is available in your environment.
@@ -12,7 +14,7 @@ def _package_available(package_name: str) -> bool:
     :return: `True` if the package is available. `False` otherwise.
     """
     try:
-        return pkg_resources.require(package_name) is not None
+        return exists(pkg_resources.require(package_name))
     except pkg_resources.DistributionNotFound:
         return False
 

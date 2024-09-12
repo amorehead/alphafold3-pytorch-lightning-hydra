@@ -7,6 +7,8 @@ import random
 import pytest
 import rootutils
 
+from alphafold3_pytorch.utils.utils import not_exists
+
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from alphafold3_pytorch.common.biomolecule import _from_mmcif_object
@@ -53,7 +55,7 @@ def test_mmcif_object_parsing(mmcif_dir: str, complex_id: str) -> None:
         auth_residues=True,
     )
 
-    if parsing_result.mmcif_object is None:
+    if not_exists(parsing_result.mmcif_object):
         print(f"Failed to parse file '{complex_filepath}'.")
         raise list(parsing_result.errors.values())[0]
     else:
@@ -135,7 +137,7 @@ def test_random_mmcif_objects_parsing(
             auth_residues=True,
         )
 
-        if parsing_result.mmcif_object is None:
+        if not_exists(parsing_result.mmcif_object):
             parsing_errors.append(list(parsing_result.errors.values())[0])
             failed_complex_indices.append(complex_index)
             failed_random_complex_filepaths.append(random_complex_filepath)

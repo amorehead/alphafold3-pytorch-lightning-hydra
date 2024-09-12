@@ -43,6 +43,8 @@ from lightning.pytorch.utilities.types import LRSchedulerConfig
 from torch.optim.optimizer import Optimizer
 from typing_extensions import override
 
+from alphafold3_pytorch.utils.utils import exists, not_exists
+
 
 class LearningRateMonitor(Callback):
     r"""Automatically monitor and logs learning rate for learning rate schedulers during training.
@@ -58,7 +60,7 @@ class LearningRateMonitor(Callback):
 
     Raises:
         MisconfigurationException:
-            If ``logging_interval`` is none of ``"step"``, ``"epoch"``, or ``None``.
+            If ``logging_interval`` is not one of ``"step"``, ``"epoch"``, or ``None``.
 
     Example::
 
@@ -185,7 +187,7 @@ class LearningRateMonitor(Callback):
             return
 
         if self.logging_interval != "epoch":
-            interval = "step" if self.logging_interval is None else "any"
+            interval = "step" if not_exists(self.logging_interval) else "any"
             latest_stat = self._extract_stats(trainer, interval)
 
             if latest_stat:
@@ -197,7 +199,7 @@ class LearningRateMonitor(Callback):
     @override
     def on_train_epoch_start(self, trainer: "pl.Trainer", *args: Any, **kwargs: Any) -> None:
         if self.logging_interval != "step":
-            interval = "epoch" if self.logging_interval is None else "any"
+            interval = "epoch" if not_exists(self.logging_interval) else "any"
             latest_stat = self._extract_stats(trainer, interval)
 
             if latest_stat:
@@ -336,11 +338,7 @@ class LearningRateMonitor(Callback):
         seen_optimizer_types: DefaultDict[Type[Optimizer], int] = defaultdict(int)
         for config in lr_scheduler_configs:
             sch = config.scheduler
-            name = (
-                config.name
-                if config.name is not None
-                else "lr-" + sch.optimizer.__class__.__name__
-            )
+            name = config.name if exists(config.name) else "lr-" + sch.optimizer.__class__.__name__
 
             updated_names = self._check_duplicates_and_update_name(
                 sch.optimizer, name, seen_optimizers, seen_optimizer_types, config
@@ -383,7 +381,7 @@ class LearningRateMonitor(Callback):
     ) -> List[str]:
         seen_optimizers.append(optimizer)
         optimizer_cls = type(optimizer)
-        if lr_scheduler_config is None or lr_scheduler_config.name is None:
+        if not_exists(lr_scheduler_config) or not_exists(lr_scheduler_config.name):
             seen_optimizer_types[optimizer_cls] += 1
 
         # Multiple param groups for the same optimizer

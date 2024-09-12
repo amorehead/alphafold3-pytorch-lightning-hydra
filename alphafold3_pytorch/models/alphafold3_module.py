@@ -19,7 +19,7 @@ from alphafold3_pytorch.models.components.inputs import BatchedAtomInput
 from alphafold3_pytorch.utils import RankedLogger
 from alphafold3_pytorch.utils.model_utils import default_lambda_lr_fn
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
-from alphafold3_pytorch.utils.utils import exists
+from alphafold3_pytorch.utils.utils import exists, not_exists
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
@@ -158,6 +158,7 @@ class Alphafold3LitModule(LightningModule):
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses.
         """
+        batch_dict = batch.dict()
         loss, loss_breakdown = self.model_step(batch)
 
         # update and log metrics
@@ -166,7 +167,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "train/loss",
             self.train_loss,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
@@ -178,7 +179,7 @@ class Alphafold3LitModule(LightningModule):
         }
         self.log_dict(
             loss_breakdown_dict,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
@@ -186,7 +187,8 @@ class Alphafold3LitModule(LightningModule):
 
         # visualize samples
 
-        if self.hparams.visualize_train_samples_every_n_steps > 0:
+        filepaths_available = "filepath" in batch_dict and exists(batch_dict["filepath"])
+        if filepaths_available and self.hparams.visualize_train_samples_every_n_steps > 0:
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
@@ -266,7 +268,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "val/model_selection_score",
             self.val_model_selection_score,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
@@ -276,7 +278,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "val/top_ranked_lddt",
             self.val_top_ranked_lddt,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
@@ -292,16 +294,22 @@ class Alphafold3LitModule(LightningModule):
                 filename_suffixes = [
                     f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
                 ]
-                self.visualize(
-                    sampled_atom_pos=top_batch_sampled_atom_pos,
-                    atom_mask=~batch_dict["missing_atom_mask"],
-                    filepaths=list(batch_dict["filepath"]),
-                    batch_idx=batch_idx,
-                    phase="val",
-                    sample_idx=top_sample_idx,
-                    filename_suffixes=filename_suffixes,
-                    b_factors=top_sample_plddt,
+                filepaths = (
+                    list(batch_dict["filepath"])
+                    if "filepath" in batch_dict and exists(batch_dict["filepath"])
+                    else None
                 )
+                if exists(filepaths):
+                    self.visualize(
+                        sampled_atom_pos=top_batch_sampled_atom_pos,
+                        atom_mask=~batch_dict["missing_atom_mask"],
+                        filepaths=filepaths,
+                        batch_idx=batch_idx,
+                        phase="val",
+                        sample_idx=top_sample_idx,
+                        filename_suffixes=filename_suffixes,
+                        b_factors=top_sample_plddt,
+                    )
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
@@ -401,7 +409,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "test/model_selection_score",
             self.test_model_selection_score,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
@@ -411,7 +419,7 @@ class Alphafold3LitModule(LightningModule):
         self.log(
             "test/top_ranked_lddt",
             self.test_top_ranked_lddt,
-            on_step=False,
+            on_step=True,
             on_epoch=True,
             sync_dist=True,
             batch_size=len(batch.atom_inputs),
@@ -427,16 +435,22 @@ class Alphafold3LitModule(LightningModule):
                 filename_suffixes = [
                     f"-score-{score:.4f}" for score in top_model_selection_score.tolist()
                 ]
-                self.visualize(
-                    sampled_atom_pos=top_batch_sampled_atom_pos,
-                    atom_mask=~batch_dict["missing_atom_mask"],
-                    filepaths=list(batch_dict["filepath"]),
-                    batch_idx=batch_idx,
-                    phase="test",
-                    sample_idx=top_sample_idx,
-                    filename_suffixes=filename_suffixes,
-                    b_factors=top_sample_plddt,
+                filepaths = (
+                    list(batch_dict["filepath"])
+                    if "filepath" in batch_dict and exists(batch_dict["filepath"])
+                    else None
                 )
+                if exists(filepaths):
+                    self.visualize(
+                        sampled_atom_pos=top_batch_sampled_atom_pos,
+                        atom_mask=~batch_dict["missing_atom_mask"],
+                        filepaths=filepaths,
+                        batch_idx=batch_idx,
+                        phase="test",
+                        sample_idx=top_sample_idx,
+                        filename_suffixes=filename_suffixes,
+                        b_factors=top_sample_plddt,
+                    )
 
     @typecheck
     @torch.inference_mode()
@@ -561,7 +575,7 @@ class Alphafold3LitModule(LightningModule):
         if self.hparams.skip_invalid_gradient_updates:
             valid_gradients = True
             for _, param in self.named_parameters():
-                if param.grad is not None:
+                if exists(param.grad):
                     valid_gradients = not (
                         torch.isnan(param.grad).any() or torch.isinf(param.grad).any()
                     )
@@ -611,7 +625,7 @@ class Alphafold3LitModule(LightningModule):
         except TypeError:
             # NOTE: Trainer strategies such as DeepSpeed require `params` to instead be specified as `model_params`
             optimizer = self.hparams.optimizer(model_params=self.trainer.model.parameters())
-        if self.hparams.scheduler is None:
+        if not_exists(self.hparams.scheduler):
             scheduler = torch.optim.lr_scheduler.LambdaLR(
                 optimizer, lr_lambda=default_lambda_lr_fn, verbose=True
             )

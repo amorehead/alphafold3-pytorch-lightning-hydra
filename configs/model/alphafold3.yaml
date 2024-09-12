@@ -34,7 +34,7 @@ skip_invalid_gradient_updates: true
 # model parameters
 parameters_initialized_from: random # NOTE: must be one of (initial_training: 'random', fine_tuning_1: 'initial_training', fine_tuning_2: 'fine_tuning_1', fine_tuning_3: 'fine_tuning_2'), proceeding from left to right following Table 6 in the paper
 train_structure_and_distogram: true # NOTE: must be one of (initial_training: True, fine_tuning_1: True, fine_tuning_2: True, fine_tuning_3: False), proceeding from left to right following Table 6 in the paper
-train_pae_head: true # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: False, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
+train_pae_head: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: False, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 diffusion_add_smooth_lddt_loss: true # NOTE: must be one of (initial_training: True, fine_tuning_1: False, fine_tuning_2: False, fine_tuning_3: False), proceeding from left to right
 diffusion_add_bond_loss: false # NOTE: must be one of (initial_training: False, fine_tuning_1: True, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 

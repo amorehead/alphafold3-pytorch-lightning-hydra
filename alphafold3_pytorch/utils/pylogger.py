@@ -1,7 +1,16 @@
 import logging
 
-from beartype.typing import Mapping, Optional
+from beartype.typing import Any, Mapping, Optional
 from lightning_utilities.core.rank_zero import rank_prefixed_message, rank_zero_only
+
+
+def not_exists(val: Any) -> bool:
+    """Check if a value does not exist.
+
+    :param val: The value to check.
+    :return: `True` if the value does not exist, otherwise `False`.
+    """
+    return val is None
 
 
 class RankedLogger(logging.LoggerAdapter):
@@ -37,14 +46,14 @@ class RankedLogger(logging.LoggerAdapter):
         if self.isEnabledFor(level):
             msg, kwargs = self.process(msg, kwargs)
             current_rank = getattr(rank_zero_only, "rank", None)
-            if current_rank is None:
+            if not_exists(current_rank):
                 raise RuntimeError("The `rank_zero_only.rank` needs to be set before use")
             msg = rank_prefixed_message(msg, current_rank)
             if self.rank_zero_only:
                 if current_rank == 0:
                     self.logger.log(level, msg, *args, **kwargs)
             else:
-                if rank is None:
+                if not_exists(rank):
                     self.logger.log(level, msg, *args, **kwargs)
                 elif current_rank == rank:
                     self.logger.log(level, msg, *args, **kwargs)

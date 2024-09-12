@@ -15,7 +15,7 @@ from alphafold3_pytorch.utils.model_utils import (
     softclamp,
 )
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, typecheck
-from alphafold3_pytorch.utils.utils import default, exists
+from alphafold3_pytorch.utils.utils import default, exists, not_exists
 
 # for changing full attention bias matrix to a local windowed one for atom attention
 
@@ -260,7 +260,7 @@ class Attend(Module):
 
         # constitute mask if not given
 
-        if not exists(mask):
+        if not_exists(mask):
             mask = torch.ones((batch, seq_len), device=device, dtype=torch.bool)
 
         # pad to multiple of window size if needed
@@ -408,7 +408,7 @@ class Attend(Module):
             )
 
         assert (
-            not exists(is_windowed_attn_bias) or not is_windowed_attn_bias
+            not_exists(is_windowed_attn_bias) or not is_windowed_attn_bias
         ), "Windowed attention bias is not supported with full attention."
 
         # append memory key / values
