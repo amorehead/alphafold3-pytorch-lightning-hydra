@@ -1,6 +1,7 @@
 _target_: alphafold3_pytorch.data.atom_datamodule.AtomDataModule
 data_dir: ${paths.data_dir}
 train_val_test_split: [2, 2, 2]
+constraints: null
 atoms_per_window: null # if specified, the number of atoms to include in each window
 map_dataset_input_fn: null # if specified, a function that should be applied to dataset examples for batching - NOTE: to specify, use resolver syntax such as `${resolve_variable:alphafold3_pytorch.utils.model_utils.default_map_dataset_input_fn}`
 batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a distributed setup)

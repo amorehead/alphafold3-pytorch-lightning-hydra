@@ -24,7 +24,6 @@ from alphafold3_pytorch.models.components.inputs import (
     PDBInput,
     maybe_transform_to_atom_inputs,
 )
-from alphafold3_pytorch.utils.data_utils import load_tsv_to_dict
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import typecheck
@@ -306,6 +305,8 @@ class PDBDataModule(LightningDataModule):
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: bool | None = None,
+        constraints: List[str] | None = None,
+        constraints_ratio: float = 0.5,
         max_number_of_chains: int = 20,
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Callable | None = None,
@@ -449,6 +450,9 @@ class PDBDataModule(LightningDataModule):
             max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=True,
+            inference=False,
+            constraints=self.hparams.constraints,
+            constraints_ratio=self.hparams.constraints_ratio,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.train_msa_dir,
@@ -481,6 +485,9 @@ class PDBDataModule(LightningDataModule):
             max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
+            inference=False,
+            constraints=self.hparams.constraints,
+            constraints_ratio=self.hparams.constraints_ratio,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.val_msa_dir,
@@ -513,6 +520,9 @@ class PDBDataModule(LightningDataModule):
             max_num_template_tokens=self.hparams.max_num_template_tokens,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
+            inference=False,
+            constraints=self.hparams.constraints,
+            constraints_ratio=self.hparams.constraints_ratio,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.test_msa_dir,

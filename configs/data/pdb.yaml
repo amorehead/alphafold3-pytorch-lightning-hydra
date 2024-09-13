@@ -16,6 +16,8 @@ kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path t
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the paper
+constraints: [binding_site] # if specified, the types of pairwise token constraints to use (e.g., `binding_site`)
+constraints_ratio: 0.5 # if `constraints` is specified, the ratio of times during training to provide pairwise token constraint embeddings to the model
 max_number_of_chains: 20 # NOTE: must be one of (initial_training: 20, fine_tuning_1: 20, fine_tuning_2: 20, fine_tuning_3: 50), proceeding from left to right following Table 6 in the paper
 atoms_per_window: null # if specified, the number of atoms to include in each window
 map_dataset_input_fn: null # if specified, a function that should be applied to dataset examples for batching - NOTE: to specify, use resolver syntax such as `${resolve_variable:alphafold3_pytorch.utils.model_utils.default_map_dataset_input_fn}`
