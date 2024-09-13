@@ -198,7 +198,11 @@ def main(cfg: DictConfig) -> Optional[float]:
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn", force=True)
     torch.multiprocessing.set_start_method("spawn", force=True)
-    torch.set_float32_matmul_precision("high")
+    # torch.set_float32_matmul_precision("high")
+
+    torch.backends.cuda.enable_mem_efficient_sdp(False)
+    torch.backends.cuda.enable_flash_sdp(False)
+    torch.backends.cuda.enable_math_sdp(True)
 
     register_custom_omegaconf_resolvers()
     main()

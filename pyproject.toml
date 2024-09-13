@@ -58,6 +58,7 @@ dependencies = [
     "einx>=0.2.2",     # for Einstein-inspired notation
     "einops>=0.8.0",   # for Einstein-inspired operations
     "environs",        # for environment variable parsing
+    "fair-esm",        # for ESM model embeddings
     "fastapi",         # for web APIs
     "frame-averaging-pytorch>=0.0.18", # for geometric data augmentation
     "gradio",         # for web interfaces

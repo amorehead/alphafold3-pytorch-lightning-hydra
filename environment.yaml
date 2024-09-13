@@ -281,6 +281,7 @@ dependencies:
       - environs==11.0.0
       - exceptiongroup==1.2.1
       - executing==2.0.1
+      - fair-esm==2.0.0
       - fastapi==0.112.2
       - filelock==3.13.1
       - fonttools==4.52.4
