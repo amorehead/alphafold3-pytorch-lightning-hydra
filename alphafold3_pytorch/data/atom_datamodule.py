@@ -1,7 +1,7 @@
 import os
 from functools import partial
 
-from beartype.typing import Any, Callable, Dict, Optional, Tuple
+from beartype.typing import Any, Callable, Dict, List, Optional, Tuple
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, Dataset
 
@@ -52,6 +52,7 @@ class AtomDataModule(LightningDataModule):
         self,
         data_dir: str = "data" + os.sep,
         train_val_test_split: Tuple[int, int, int] | None = (2, 2, 2),
+        constraints: List[str] | None = None,
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Optional[Callable] = None,
         batch_size: int = 1,

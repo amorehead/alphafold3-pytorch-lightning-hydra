@@ -397,7 +397,7 @@ dependencies:
       - typing-extensions==4.9.0
       - url-normalize==1.4.3
       - virtualenv==20.26.2
-      - git+https://github.com/wandb/wandb.git@41c9cb0cee6f763931045c25bf2fbdba32699575
+      - wandb==0.18.0
       - wget==3.2
       - wrapt==1.16.0
       - xarray==2024.3.0

@@ -18,18 +18,6 @@ RUN apt-get update \
     && apt-get autoremove -y \
     && apt-get clean
 
-# Install Go and Rust to build WandB from source
-ENV GO_VERSION=1.23.1
-RUN wget -P /tmp https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz
-RUN tar -C /usr/local -xzf /tmp/go${GO_VERSION}.linux-amd64.tar.gz
-RUN rm /tmp/go${GO_VERSION}.linux-amd64.tar.gz
-
-ENV GOPATH /go
-RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
-
-RUN curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
-ENV CARGO_PATH=/root/.cargo
-
 ## Set environment variables
 ENV ROCM_MAJOR=6
 ENV ROCM_MINOR=2
@@ -39,7 +27,7 @@ ENV ROCM_PATH=/opt/rocm-$ROCM_RELEASE
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ROCM_PATH/lib
 ENV CONDA_PREFIX=/opt/miniforge3
 
-ENV PATH=$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$GOPATH/bin:/usr/local/go/bin:$CARGO_PATH/bin:$PATH
+ENV PATH=$ROCM_PATH/bin:$ROCM_PATH/llvm/bin:$PATH
 
 # Create a `rocm_version.h` file to allow for the installation of DeepSpeed
 RUN mkdir -p /usr/include
@@ -66,8 +54,6 @@ RUN git clone https://github.com/amorehead/alphafold3-pytorch-lightning-hydra . 
     && pip install .
 
 RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed. "
-
-RUN python3 -c "import wandb; print(wandb.__version__)" || echo "WandB is not installed. "
 
 # Check kalign
 RUN kalign -h

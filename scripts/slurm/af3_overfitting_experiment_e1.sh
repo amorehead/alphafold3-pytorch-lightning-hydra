@@ -13,7 +13,6 @@
 #################################################################
 
 # Load required modules
-module load pytorch/2.2.0-rocm5.7.3
 module load pawseyenv/2023.08
 # NOTE: The following module swap is needed due to a PyTorch module bug
 module load singularity/3.11.4-nohost
@@ -25,7 +24,7 @@ rm -rf "${MIOPEN_USER_DB_PATH}"
 mkdir -p "${MIOPEN_USER_DB_PATH}"
 
 # Define the container image path
-export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.4.50_dev.sif"
+export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
 
 # Set the number of threads to be generated for each PyTorch (GPU) process
 export OMP_NUM_THREADS=8
@@ -42,7 +41,8 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO PYTHONFAULTHANDLER=1 \
+        && python3 -c 'import torch; print(torch.__version__)' \
+        && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \
         data.kalign_binary_path=/usr/bin/kalign \
