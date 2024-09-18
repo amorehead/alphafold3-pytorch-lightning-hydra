@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 
 from alphafold3_pytorch.cli import cli
 from alphafold3_pytorch.data.pdb_datamodule import (
+    alphafold3_input_to_biomolecule,
     alphafold3_inputs_to_batched_atom_input,
     collate_inputs_to_batched_atom_input,
     pdb_inputs_to_batched_atom_input,
@@ -112,6 +113,7 @@ __all__ = [
     PDBInput,
     PDBDataset,
     alphafold3_inputs_to_batched_atom_input,
+    alphafold3_input_to_biomolecule,
     atom_input_to_file,
     cli,
     collate_inputs_to_batched_atom_input,
@@ -178,22 +180,6 @@ def resolve_omegaconf_classes(module_name: str, class_names: List[str]) -> Set[A
     return classes
 
 
-def resolve_constraint_embeddings(constraint_embeddings: List[str] | None) -> int | None:
-    """Resolve total constraint embedding dimensionality from a list of constraint descriptor
-    strings."""
-    if not constraint_embeddings:
-        return None
-
-    num_embeddings = 0
-    for constraint_embedding in constraint_embeddings:
-        if constraint_embedding in CONSTRAINT_DIMS:
-            num_embeddings += CONSTRAINT_DIMS[constraint_embedding]
-        else:
-            raise ValueError(f"Error: {constraint_embedding} is not a valid constraint type.")
-
-    return num_embeddings
-
-
 def int_divide(x: int, y: int, raise_exception: bool = False) -> int:
     """Perform integer division on `x` and `y`.
 
@@ -219,8 +205,8 @@ def register_custom_omegaconf_resolvers():
         lambda module_name, class_names: resolve_omegaconf_classes(module_name, class_names),
     )
     OmegaConf.register_new_resolver(
-        "resolve_constraint_embeddings",
-        lambda constraint_embeddings: resolve_constraint_embeddings(constraint_embeddings),
+        "resolve_list_as_tuple",
+        lambda object_list: tuple(object_list),
     )
     OmegaConf.register_new_resolver("add", lambda x, y: x + y)
     OmegaConf.register_new_resolver("subtract", lambda x, y: x - y)

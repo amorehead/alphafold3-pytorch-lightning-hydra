@@ -19,9 +19,9 @@ check_val_every_n_epoch: 1
 # makes training slower but gives more reproducibility than just setting seeds
 deterministic: False
 
-# if `gradient_clip_val` is not `null` or `0.0`, gradients will be norm-clipped by an upper bound of `gradient_clip_val` during training
-gradient_clip_algorithm: norm
-gradient_clip_val: 10.0
+# if `gradient_clip_val` is not `0.0` or `null`, gradients will be norm-clipped by an upper bound of `gradient_clip_val` during training
+# gradient_clip_algorithm: norm
+# gradient_clip_val: 10.0
 
 # accumulate gradients of `accumulate_grad_batches` batches (e.g., by this amount for each rank) before doing a backward pass
 # NOTE: here, we would have to accumulate gradients independently for each rank, per https://lightning.ai/docs/pytorch/stable/advanced/training_tricks.html#accumulate-gradients

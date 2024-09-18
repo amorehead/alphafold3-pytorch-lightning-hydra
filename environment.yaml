@@ -65,18 +65,17 @@ dependencies:
   - freetype-py=2.3.0=pyhd8ed1ab_0
   - fribidi=1.0.10=h36c2ea0_0
   - gawk=5.3.0=ha916aea_0
-  - gcc=14.1.0=h6f9ffa1_1
-  - gcc_impl_linux-64=14.1.0=h3c94d91_1
+  - gcc
+  - gcc_impl_linux-64
   - gettext=0.22.5=h59595ed_2
   - gettext-tools=0.22.5=h59595ed_2
   - gmp=6.3.0=h59595ed_1
   - gmpy2=2.1.5=py310hc7909c9_1
   - gnutls=3.7.9=hb077bed_0
-  - go=1.23.0=hc4c73a6_1
   - graphite2=1.3.13=h59595ed_1003
   - greenlet=3.0.3=py310hc6cd4ac_0
-  - gxx=14.1.0=h6f9ffa1_1
-  - gxx_impl_linux-64=14.1.0=h8d00ecb_1
+  - gxx
+  - gxx_impl_linux-64
   - harfbuzz=8.5.0=hfac3d4d_0
   - icu=73.2=h59595ed_0
   - idna=3.7=pyhd8ed1ab_0
@@ -207,7 +206,6 @@ dependencies:
   - rlpycairo=0.2.0=pyhd8ed1ab_0
   - ruamel.yaml=0.17.21=py310h1fa729e_3
   - ruamel.yaml.clib=0.2.7=py310h2372a71_2
-  - rust=1.77.2=h70c747d_1
   - s2n=1.4.16=he19d79f_0
   - setuptools=70.0.0=pyhd8ed1ab_0
   - six=1.16.0=pyh6c4a22f_0
@@ -221,7 +219,6 @@ dependencies:
   - torchvision=0.18.1=py310_cu118
   - tzdata=2024a=h0c530f3_0
   - unicodedata2=15.1.0=py310h2372a71_0
-  - urllib3=1.26.19=pyhd8ed1ab_0
   - wcwidth=0.2.13=pyhd8ed1ab_0
   - wheel=0.43.0=pyhd8ed1ab_1
   - x264=1!164.3095=h166bdaf_2
@@ -289,7 +286,7 @@ dependencies:
       - frozendict==2.4.4
       - frozenlist==1.4.1
       - fsspec==2024.2.0
-      - gradio==4.43.0
+      - gradio==4.44.0
       - gradio_client==1.3.0
       - gradio_molecule3d==0.0.5
       - gemmi==0.6.6
@@ -326,6 +323,7 @@ dependencies:
       - mmtf-python==1.1.3
       - msgpack==1.0.8
       - multidict==6.0.5
+      - multimolecule==0.0.4
       - multipledispatch==1.0.0
       - nest-asyncio==1.6.0
       - networkx==3.2.1
@@ -373,6 +371,7 @@ dependencies:
       - scikit-learn==1.5.0
       - scipy==1.13.1
       - seaborn==0.13.2
+      - sentencepiece==0.2.0
       - sh==2.0.7
       - shortuuid==1.0.13
       - sniffio==1.3.1
@@ -392,10 +391,12 @@ dependencies:
       - tornado==6.4
       - tqdm==4.66.4
       - traitlets==5.14.3
+      - transformers==4.44.2
       - triton==2.3.0
       - typeguard==2.13.3
       - typing-extensions==4.9.0
       - url-normalize==1.4.3
+      - urllib3==2.2.3
       - virtualenv==20.26.2
       - wandb==0.18.0
       - wget==3.2

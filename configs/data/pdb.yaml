@@ -12,12 +12,15 @@ max_num_msa_tokens: null # if specified, the maximum number of MSA sequence toke
 max_templates_per_chain: null # if specified, the maximum number of templates to include per chain (e.g., for throughput concerns)
 num_templates_per_chain: null # if specified, the effective number number of templates to include per chain (e.g., for throughput concerns)
 max_num_template_tokens: null # if specified, the maximum number of template sequence tokens to include per structure (e.g., for throughput concerns)
+max_train_length: null # NOTE: if specified, the maximum allowed (pre-cropping) length of any training example
+max_val_length: null # NOTE: if specified, the maximum allowed length of any validation example
+train_cutoff_date: "2021-01-12" # if specified, the effective cutoff date for training data
 kalign_binary_path: ${oc.env:CONDA_PREFIX}/bin/kalign # if specified, the path to a local Kalign3 executable
 sampling_weight_for_disorder_pdb_distillation: 0.02 # NOTE: must be one of (initial_training: 0.02, fine_tuning_1: 0.01, fine_tuning_2: 0.02, fine_tuning_3: 0.02), proceeding from left to right following Table 6 in the paper
 train_on_transcription_factor_distillation_sets: false # NOTE: must be one of (initial_training: False, fine_tuning_1: False, fine_tuning_2: True, fine_tuning_3: True), proceeding from left to right following Table 6 in the paper
 pdb_distillation: null # NOTE: does not appear to be used in Table 6 of the paper
-constraints: [binding_site] # if specified, the types of pairwise token constraints to use (e.g., `binding_site`)
-constraints_ratio: 0.5 # if `constraints` is specified, the ratio of times during training to provide pairwise token constraint embeddings to the model
+constraints: null # if specified, a list of the types of pairwise token constraints to use, which must consist of (`pocket`, `contact`, `docking`)
+constraints_ratio: 0.1 # if `constraints` is specified, the ratio of times during training to provide pairwise token constraint embeddings to the model (independently for each constraint type)
 max_number_of_chains: 20 # NOTE: must be one of (initial_training: 20, fine_tuning_1: 20, fine_tuning_2: 20, fine_tuning_3: 50), proceeding from left to right following Table 6 in the paper
 atoms_per_window: null # if specified, the number of atoms to include in each window
 map_dataset_input_fn: null # if specified, a function that should be applied to dataset examples for batching - NOTE: to specify, use resolver syntax such as `${resolve_variable:alphafold3_pytorch.utils.model_utils.default_map_dataset_input_fn}`
@@ -26,8 +29,9 @@ shuffle_train_val_test_subsets: True # NOTE: this is only referenced if `train_v
 overfitting_train_examples: false # NOTE: if true, overfit to the training dataset by treating it also as the validation and test datasets
 ablate_weighted_pdb_sampler: false # whether to ablate the WeightedPDBSampler
 sample_only_pdb_ids: null # if specified, a subset of  PDB IDs to sample from the training, validation, or testing sets
+filter_out_pdb_ids: null # if specified, a subset of PDB IDs to filter out from the training, validation, or testing sets
 batch_size: 1 # needs to be divisible by the number of devices (e.g., if in a distributed setup)
-num_workers: 4
+num_workers: 8
 pin_memory: true
 multiprocessing_context: spawn
 prefetch_factor: 2

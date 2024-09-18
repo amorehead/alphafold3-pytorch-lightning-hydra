@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import importlib.metadata
+from functools import partial
+
 import numpy as np
 import rootutils
+import torch
 from beartype import beartype
 from beartype.door import is_bearable
 from Bio.PDB.Atom import Atom, DisorderedAtom
@@ -48,6 +52,39 @@ ResidueType = Residue | DisorderedResidue
 ChainType = Chain
 TokenType = AtomType | ResidueType
 
+# some more colocated environmental stuff
+
+
+def package_available(package_name: str) -> bool:
+    """Check if a package is available in your environment.
+
+    :param package_name: The name of the package to be checked.
+    :return: `True` if the package is available. `False` otherwise.
+    """
+    try:
+        importlib.metadata.version(package_name)
+        return True
+    except importlib.metadata.PackageNotFoundError:
+        return False
+
+
+# maybe deespeed checkpoint, and always use non reentrant checkpointing
+
+DEEPSPEED_CHECKPOINTING = env.bool("DEEPSPEED_CHECKPOINTING", False)
+
+if DEEPSPEED_CHECKPOINTING:
+    assert package_available("deepspeed"), "DeepSpeed must be installed for checkpointing."
+
+    import deepspeed
+
+    checkpoint = deepspeed.checkpointing.checkpoint
+else:
+    checkpoint = partial(torch.utils.checkpoint.checkpoint, use_reentrant=False)
+
+# check is GitHub CI
+
+IS_GITHUB_CI = env.bool("IS_GITHUB_CI", False)
+
 # NOTE: use env variable `TYPECHECK` (which is set by `rootutils` above using `.env`) to control whether to use `beartype` + `jaxtyping`
 # NOTE: use env variable `DEBUG` to control whether to print debugging information
 
@@ -74,7 +111,9 @@ __all__ = [
     Float,
     Int,
     Shaped,
+    checkpoint,
     should_typecheck,
     typecheck,
     IS_DEBUGGING,
+    IS_GITHUB_CI,
 ]

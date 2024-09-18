@@ -1,14 +1,23 @@
 import multiprocessing
 import os
 import random
+from datetime import datetime
 from functools import partial
 
+import numpy as np
 import torch
 from beartype.typing import Any, Callable, Dict, List, Literal, Tuple, Union
 from lightning import LightningDataModule
 from torch import tensor
 from torch.utils.data import DataLoader, Dataset
 
+from alphafold3_pytorch.common import (
+    amino_acid_constants,
+    dna_constants,
+    ligand_constants,
+    rna_constants,
+)
+from alphafold3_pytorch.common.biomolecule import Biomolecule, get_residue_constants
 from alphafold3_pytorch.data.weighted_pdb_sampler import WeightedPDBSampler
 from alphafold3_pytorch.models.components.attention import (
     full_attn_bias_to_windowed,
@@ -22,7 +31,9 @@ from alphafold3_pytorch.models.components.inputs import (
     BatchedAtomInput,
     PDBDataset,
     PDBInput,
+    alphafold3_input_to_molecule_lengthed_molecule_input,
     maybe_transform_to_atom_inputs,
+    molecule_lengthed_molecule_input_to_atom_input,
 )
 from alphafold3_pytorch.utils.model_utils import pad_at_dim
 from alphafold3_pytorch.utils.pylogger import RankedLogger
@@ -202,6 +213,161 @@ def alphafold3_inputs_to_batched_atom_input(
 
 
 @typecheck
+def alphafold3_input_to_biomolecule(
+    af3_input: Alphafold3Input, atom_positions: np.ndarray
+) -> Biomolecule:
+    """Convert an `Alphafold3Input` object into a corresponding `Biomolecule` object.
+
+    :param af3_input: The `AlphaFold3Input` object for multi-domain `Biomolecules`.
+    :param atom_positions: The sampled or reference atom coordinates of shape [num_res, repr_dimension (47), 3].
+    :return: A `Biomolecule` object for data handling within the rest of the codebase.
+    """
+    af3_atom_input = molecule_lengthed_molecule_input_to_atom_input(
+        alphafold3_input_to_molecule_lengthed_molecule_input(af3_input)
+    )
+
+    # Ensure that the atom positions are of the correct shape
+    if atom_positions is not None:
+        assert atom_positions.shape[0] == len(
+            af3_atom_input.molecule_ids
+        ), "Please ensure that the atoms are of the shape [num_res, repr, 3]"
+        assert (
+            atom_positions.shape[-1] == 3
+        ), "Please ensure that the atoms are of the shape [num_res, repr, 3]"
+
+    # Step 1. Get the various intermediate inputs
+    # Hacky solution: Need to double up on ligand because metal constants dont exist yet
+    ALL_restypes = np.concatenate(
+        [
+            amino_acid_constants.restype_atom47_to_compact_atom,
+            rna_constants.restype_atom47_to_compact_atom,
+            dna_constants.restype_atom47_to_compact_atom,
+            ligand_constants.restype_atom47_to_compact_atom,
+            ligand_constants.restype_atom47_to_compact_atom,
+        ],
+        axis=0,
+    )
+    molecule_ids = af3_atom_input.molecule_ids.cpu().numpy()
+    restype_to_atom = np.array([ALL_restypes[mol_idx] for mol_idx in molecule_ids])
+    molecule_types = np.nonzero(af3_atom_input.is_molecule_types)[:, 1]
+    res_rep_atom_indices = [
+        get_residue_constants(res_chem_index=molecule_type.item()).res_rep_atom_index
+        for molecule_type in molecule_types
+    ]
+
+    # Step 2. Atom Names
+    # atom_names: array of strings [num_res], each residue is denoted by representative atom name
+    atom_names = []
+
+    for res_idx in range(len(molecule_ids)):
+        molecule_type = molecule_types[res_idx].item()
+        residue = molecule_ids[res_idx].item()
+        residue_offset = get_residue_constants(res_chem_index=molecule_type).min_restype_num
+        residue_idx = residue - residue_offset
+        atom_idx = res_rep_atom_indices[res_idx]
+        # If the molecule type is a protein, RNA, or DNA
+        if molecule_type < 3:
+            # Dictionary of Residue to Atoms
+            res_to_atom = get_residue_constants(
+                res_chem_index=molecule_type
+            ).restype_name_to_compact_atom_names
+            residue_name = get_residue_constants(res_chem_index=molecule_type).resnames[
+                residue_idx
+            ]
+            atom_names.append(res_to_atom[residue_name][atom_idx])
+        else:
+            # TODO: See if there is a way to add in metals as separate to the ligands
+            atom_name = get_residue_constants(
+                res_chem_index=molecule_type
+            ).restype_name_to_compact_atom_names["UNL"][atom_idx]
+            atom_names.append(atom_name)
+
+    # Step 3. Restypes
+    # restypes: np.array [num_res] w/ values from 0 to 32
+    res_types = molecule_ids.copy()
+
+    # Step 4. Atom Masks
+    # atom_masks: np.array [num_res, num_atom_types (47)]
+    # Due to the first Atom that's present being a zero due to zero indexed counts we force it to be a one.
+    atom_masks = np.stack(
+        [
+            np.array(np.concatenate([np.array([1]), r2a[1:]]) != 0).astype(int)
+            for r2a in restype_to_atom
+        ]
+    )
+
+    # Step 5. Residue Index
+    # residue_index: np.array [num_res], 1-indexed
+    residue_index = af3_atom_input.additional_molecule_feats.cpu().numpy()[:, 0] + 1
+
+    # Step 6. Chain Index
+    # chain_index: np.array [num_res], borrow the entity IDs (vs sym_ids, idx3) as chain IDs
+    chain_index = af3_atom_input.additional_molecule_feats.cpu().numpy()[:, 2]
+
+    # Step 7. Chain IDs
+    # chain_ids: list of strings [num_res], each residue is denoted by chain ID
+    chain_ids = [str(x) for x in chain_index]
+
+    # Step 8. B-Factors
+    # b_factors: np.ndarray [num_res, num_atom_type]
+    b_factors = np.ones_like(atom_masks)
+
+    # Step 9. ChemIDs
+    # TODO: The individual Ligand Molecules when split up by RDKit are not being assigned a specific chemical ID
+    # chemids: list of strings [num_res], each residue is denoted by chemical ID
+    chemids = []
+
+    for idx in range(len(molecule_ids)):
+        mt = molecule_types[idx].item()
+        restypes = get_residue_constants(res_chem_index=mt).restypes
+        min_res_offset = get_residue_constants(res_chem_index=mt).min_restype_num
+        restype_dict = {min_res_offset + i: restype for i, restype in enumerate(restypes)}
+        try:
+            one_letter = restype_dict[molecule_ids[idx].item()]
+            chemids.append(get_residue_constants(res_chem_index=mt).restype_1to3[one_letter])
+        except KeyError:
+            chemids.append("UNK")
+
+    chemids = np.array(chemids)
+
+    # Step 10. ChemTypes
+    # chemtypes: np.array [num_res], each residue is denoted by chemical type 0-4
+    chemtypes = np.nonzero(af3_atom_input.is_molecule_types.cpu().numpy())[1]
+
+    # Step 11. Entity to Chain
+    # entity_to_chain: dict, entity ID to chain ID
+    # quick and dirty assignment
+    entity_to_chain = {int(x): [int(x)] for x in np.unique(chain_index)}
+
+    # Step 12. Biomolecule Object
+    biomol = Biomolecule(
+        atom_positions=atom_positions,
+        atom_name=atom_names,
+        restype=res_types,
+        atom_mask=atom_masks,
+        residue_index=residue_index,
+        chain_index=chain_index,
+        chain_id=chain_ids,
+        b_factors=b_factors,
+        chemid=chemids,
+        chemtype=chemtypes,
+        bonds=None,
+        unique_res_atom_names=None,  # TODO: Need to find how to use the ligand information here
+        author_cri_to_new_cri=None,
+        chem_comp_table=None,
+        entity_to_chain=entity_to_chain,
+        mmcif_to_author_chain=None,
+        mmcif_metadata={
+            "_pdbx_audit_revision_history.revision_date": [
+                f"{datetime.today().strftime('%Y-%m-%d')}"
+            ]
+        },
+    )
+
+    return biomol
+
+
+@typecheck
 def pdb_inputs_to_batched_atom_input(
     inp: PDBInput | List[PDBInput], **collate_kwargs
 ) -> BatchedAtomInput:
@@ -301,12 +467,15 @@ class PDBDataModule(LightningDataModule):
         max_templates_per_chain: int | None = None,
         num_templates_per_chain: int | None = None,
         max_num_template_tokens: int | None = None,
+        max_train_length: int | None = None,
+        max_val_length: int | None = None,
+        train_cutoff_date: str | None = None,
         kalign_binary_path: str | None = None,
         sampling_weight_for_disorder_pdb_distillation: float = 0.02,
         train_on_transcription_factor_distillation_sets: bool = False,
         pdb_distillation: bool | None = None,
         constraints: List[str] | None = None,
-        constraints_ratio: float = 0.5,
+        constraints_ratio: float = 0.1,
         max_number_of_chains: int = 20,
         atoms_per_window: int | None = None,
         map_dataset_input_fn: Callable | None = None,
@@ -314,6 +483,7 @@ class PDBDataModule(LightningDataModule):
         shuffle_train_val_test_subsets: bool = True,
         overfitting_train_examples: bool = False,
         ablate_weighted_pdb_sampler: bool = False,
+        filter_out_pdb_ids: List[str] | None = None,
         sample_only_pdb_ids: List[str] | None = None,
         batch_size: int = 1,
         num_workers: int = 0,
@@ -362,6 +532,14 @@ class PDBDataModule(LightningDataModule):
         sample_only_pdb_ids_list = (
             list(sample_only_pdb_ids) if exists(sample_only_pdb_ids) else None
         )
+
+        filter_out_pdb_ids = (
+            # filter out specific PDB IDs as requested
+            set(self.hparams.filter_out_pdb_ids)
+            if exists(self.hparams.filter_out_pdb_ids)
+            else None
+        )
+        filter_out_pdb_ids_list = list(filter_out_pdb_ids) if exists(filter_out_pdb_ids) else None
 
         # data paths for each split
         for split in ("train", "val", "test"):
@@ -432,6 +610,7 @@ class PDBDataModule(LightningDataModule):
                 chain_mapping_paths=self.train_chain_mapping_paths,
                 interface_mapping_path=self.train_interface_mapping_path,
                 batch_size=1,
+                pdb_ids_to_skip=filter_out_pdb_ids_list,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
             )
         )
@@ -448,11 +627,14 @@ class PDBDataModule(LightningDataModule):
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
             max_num_template_tokens=self.hparams.max_num_template_tokens,
+            max_length=self.hparams.max_train_length,
+            cutoff_date=self.hparams.train_cutoff_date,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=True,
             inference=False,
             constraints=self.hparams.constraints,
             constraints_ratio=self.hparams.constraints_ratio,
+            filter_out_pdb_ids=filter_out_pdb_ids,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.train_msa_dir,
@@ -467,6 +649,7 @@ class PDBDataModule(LightningDataModule):
                 chain_mapping_paths=self.val_chain_mapping_paths,
                 interface_mapping_path=self.val_interface_mapping_path,
                 batch_size=1,
+                pdb_ids_to_skip=filter_out_pdb_ids_list,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
             )
         )
@@ -483,11 +666,13 @@ class PDBDataModule(LightningDataModule):
             max_templates_per_chain=self.hparams.max_templates_per_chain,
             num_templates_per_chain=self.hparams.num_templates_per_chain,
             max_num_template_tokens=self.hparams.max_num_template_tokens,
+            max_length=self.hparams.max_val_length,
             kalign_binary_path=self.hparams.kalign_binary_path,
             training=False,
             inference=False,
             constraints=self.hparams.constraints,
             constraints_ratio=self.hparams.constraints_ratio,
+            filter_out_pdb_ids=filter_out_pdb_ids,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.val_msa_dir,
@@ -502,6 +687,7 @@ class PDBDataModule(LightningDataModule):
                 chain_mapping_paths=self.test_chain_mapping_paths,
                 interface_mapping_path=self.test_interface_mapping_path,
                 batch_size=1,
+                pdb_ids_to_skip=filter_out_pdb_ids_list,
                 pdb_ids_to_keep=sample_only_pdb_ids_list,
             )
         )
@@ -523,6 +709,7 @@ class PDBDataModule(LightningDataModule):
             inference=False,
             constraints=self.hparams.constraints,
             constraints_ratio=self.hparams.constraints_ratio,
+            filter_out_pdb_ids=filter_out_pdb_ids,
             sample_only_pdb_ids=sample_only_pdb_ids,
             return_atom_inputs=True,
             msa_dir=self.test_msa_dir,

@@ -4,10 +4,11 @@ from functools import wraps
 import einx
 import torch
 import torch.nn.functional as F
-from beartype.typing import Callable, List, Tuple, Union
+from beartype.typing import Any, Callable, List, Tuple, Union
 from einops import einsum, pack, rearrange, reduce, repeat, unpack
-from torch import Tensor
+from torch import Tensor, is_tensor
 from torch.nn import Module
+from torch.utils._pytree import tree_map
 
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, Shaped, typecheck
 from alphafold3_pytorch.utils.utils import default, exists, not_exists
@@ -21,6 +22,7 @@ Shape = Union[Tuple[int, ...], List[int]]
 # default scheduler used in paper w/ warmup
 
 
+@typecheck
 def default_lambda_lr_fn(steps: int) -> float:
     """Default lambda learning rate function.
 
@@ -75,6 +77,7 @@ def offset_only_positive(t: Tensor, offset: Tensor) -> Tensor:
     return torch.where(is_positive, t_offsetted, t)
 
 
+@typecheck
 def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
     """Perform an L2 normalization on a Tensor.
 
@@ -86,7 +89,8 @@ def l2norm(t: Tensor, eps: float = 1e-20, dim: int = -1) -> Tensor:
     return F.normalize(t, p=2, eps=eps, dim=dim)
 
 
-def max_neg_value(t: Tensor) -> Tensor:
+@typecheck
+def max_neg_value(t: Tensor) -> float:
     """Get the maximum negative value of Tensor based on its `dtype`.
 
     :param t: The Tensor.
@@ -95,6 +99,17 @@ def max_neg_value(t: Tensor) -> Tensor:
     return -torch.finfo(t.dtype).max
 
 
+def dict_to_device(d: dict, device: str | torch.device) -> dict:
+    """Move a dictionary of tensors to a device.
+
+    :param d: The dictionary of tensors.
+    :param device: The device to move to.
+    :return: The dictionary of tensors on the device.
+    """
+    return tree_map(lambda t: t.to(device) if is_tensor(t) else t, d)
+
+
+@typecheck
 def log(t: Tensor, eps=1e-20) -> Tensor:
     """Run a safe log function that clamps the input to be above `eps` to avoid `log(0)`.
 
@@ -105,6 +120,7 @@ def log(t: Tensor, eps=1e-20) -> Tensor:
     return torch.log(t.clamp(min=eps))
 
 
+@typecheck
 def divisible_by(num: int, den: int) -> bool:
     """Check if a number is divisible by another number.
 
@@ -115,6 +131,7 @@ def divisible_by(num: int, den: int) -> bool:
     return (num % den) == 0
 
 
+@typecheck
 def compact(*args):
     """Compact a tuple of objects by removing any `None` values.
 
@@ -124,12 +141,24 @@ def compact(*args):
     return tuple(filter(exists, args))
 
 
-def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
+@typecheck
+def cast_tuple(t: Any, length: int = 1) -> Tuple[Any, ...]:
+    """Cast an object to a tuple of objects with the given length.
+
+    :param t: The object to cast.
+    :param length: The length of the tuple.
+    :return: The casted tuple.
+    """
+    return t if isinstance(t, tuple) else ((t,) * length)
+
+
+@typecheck
+def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, Callable]:
     """Pack a single tensor into a tuple of tensors with the given pattern.
 
     :param t: The tensor to pack.
     :param pattern: The pattern with which to pack.
-    :return: The packed tensor along with the shape(s) of the tensor.
+    :return: The packed tensor and the unpack function.
     """
     packed, ps = pack([t], pattern)
 
@@ -146,6 +175,7 @@ def pack_one(t: Tensor, pattern: str) -> Tuple[Tensor, List[Shape]]:
     return packed, unpack_one
 
 
+@typecheck
 def softclamp(t: Tensor, value: float) -> Tensor:
     """Perform a soft clamp on a Tensor.
 
@@ -156,6 +186,7 @@ def softclamp(t: Tensor, value: float) -> Tensor:
     return (t / value).tanh() * value
 
 
+@typecheck
 def exclusive_cumsum(t: Tensor, dim: int = -1) -> Tensor:
     """Perform an exclusive cumulative summation on a Tensor.
 
@@ -176,9 +207,20 @@ def symmetrize(t: Float["b n n ..."]) -> Float["b n n ..."]:  # type: ignore
     return t + rearrange(t, "b i j ... -> b j i ...")
 
 
+@typecheck
+def freeze_(m: Module):
+    """Freeze a module.
+
+    :param m: The module to freeze.
+    """
+    for p in m.parameters():
+        p.requires_grad = False
+
+
 # decorators
 
 
+@typecheck
 def maybe(fn):
     """Decorator to check if a Tensor exists before running a function on it."""
 
@@ -626,7 +668,7 @@ def should_checkpoint(
     :param check_instance_variable: The instance variable to check.
     :return: True if activation checkpointing should be used, False otherwise.
     """
-    if torch.is_tensor(inputs):
+    if is_tensor(inputs):
         inputs = (inputs,)
 
     return (
@@ -634,20 +676,6 @@ def should_checkpoint(
         and any([i.requires_grad for i in inputs])
         and (not_exists(check_instance_variable) or getattr(self, check_instance_variable, False))
     )
-
-
-@typecheck
-def package_available(package_name: str) -> bool:
-    """Check if a package is available in your environment.
-
-    :param package_name: The name of the package to be checked.
-    :return: `True` if the package is available. `False` otherwise.
-    """
-    try:
-        importlib.metadata.version(package_name)
-        return True
-    except importlib.metadata.PackageNotFoundError:
-        return False
 
 
 @typecheck

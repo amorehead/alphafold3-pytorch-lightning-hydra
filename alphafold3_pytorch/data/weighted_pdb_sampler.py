@@ -187,7 +187,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
         alpha_prot: float = 3.0,
         alpha_nuc: float = 3.0,
         alpha_ligand: float = 1.0,
-        pdb_ids_to_skip: List[str] = [],
+        pdb_ids_to_skip: List[str] | None = None,
         pdb_ids_to_keep: List[str] | None = None,
     ):
         # Load chain and interface mappings
@@ -206,7 +206,7 @@ class WeightedPDBSampler(Sampler[List[str]]):
         interface_mapping = pl.read_csv(interface_mapping_path)
 
         # Filter out unwanted PDB IDs
-        if len(pdb_ids_to_skip) > 0:
+        if exists(pdb_ids_to_skip) and len(pdb_ids_to_skip) > 0:
             chain_mapping = chain_mapping.filter(pl.col("pdb_id").is_in(pdb_ids_to_skip).not_())
             interface_mapping = interface_mapping.filter(
                 pl.col("pdb_id").is_in(pdb_ids_to_skip).not_()

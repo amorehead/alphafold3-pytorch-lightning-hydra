@@ -18,6 +18,7 @@ from pathlib import Path
 
 import einx
 import numpy as np
+import timeout_decorator
 import torch
 import torch.nn.functional as F
 from beartype.typing import Any, Callable, Dict, List, Literal, Set, Tuple, Type
@@ -75,11 +76,13 @@ from alphafold3_pytorch.utils.data_utils import (
     make_one_hot,
 )
 from alphafold3_pytorch.utils.model_utils import (
+    distance_to_dgram,
     exclusive_cumsum,
     get_frames_from_atom_pos,
     maybe,
     offset_only_positive,
     remove_consecutive_duplicate,
+    to_pairwise_mask,
 )
 from alphafold3_pytorch.utils.pylogger import RankedLogger
 from alphafold3_pytorch.utils.tensor_typing import Bool, Float, Int, typecheck
@@ -93,13 +96,19 @@ RDLogger.DisableLog("rdApp.*")
 
 # constants
 
+PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT = 60
+
 IS_MOLECULE_TYPES = 5
 IS_PROTEIN_INDEX = 0
 IS_RNA_INDEX = 1
 IS_DNA_INDEX = 2
 IS_LIGAND_INDEX = -2
 IS_METAL_ION_INDEX = -1
+
 IS_BIOMOLECULE_INDICES = slice(0, 3)
+IS_NON_PROTEIN_INDICES = slice(1, 5)
+IS_NA_INDICES = slice(1, 3)
+IS_NON_NA_INDICES = [0, 3, 4]
 
 IS_PROTEIN, IS_RNA, IS_DNA, IS_LIGAND, IS_METAL_ION = tuple(
     (IS_MOLECULE_TYPES + i if i < 0 else i)
@@ -119,14 +128,22 @@ NUM_MOLECULE_IDS = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLE
 NUM_HUMAN_AMINO_ACIDS = len(HUMAN_AMINO_ACIDS) - 1  # exclude unknown amino acid type
 NUM_MSA_ONE_HOT = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES) + 1
 
+MIN_RNA_NUCLEOTIDE_ID = len(HUMAN_AMINO_ACIDS)
+MAX_DNA_NUCLEOTIDE_ID = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) + len(DNA_NUCLEOTIDES) - 1
+
+MISSING_RNA_NUCLEOTIDE_ID = len(HUMAN_AMINO_ACIDS) + len(RNA_NUCLEOTIDES) - 1
+
 DEFAULT_NUM_MOLECULE_MODS = 4  # `mod_protein`, `mod_rna`, `mod_dna`, and `mod_unk`
 ADDITIONAL_MOLECULE_FEATS = 5
 
-CONSTRAINTS = Literal["binding_site"]
+CONSTRAINTS = Literal["pocket", "contact", "docking"]
 CONSTRAINT_DIMS = {
-    # NOTE: A mapping of constraint types to their respective input embedding dimensionalities.
-    "binding_site": 1,
+    # A mapping of constraint types to their respective input embedding dimensionalities.
+    "pocket": 1,
+    "contact": 1,
+    "docking": 4,
 }
+CONSTRAINTS_MASK_VALUE = -1.0
 
 CCD_COMPONENTS_FILEPATH = os.path.join("data", "ccd_data", "components.cif")
 CCD_COMPONENTS_SMILES_FILEPATH = os.path.join("data", "ccd_data", "components_smiles.json")
@@ -577,7 +594,14 @@ class MoleculeInput:
 
 @typecheck
 def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
-    """Convert a MoleculeInput to an AtomInput."""
+    """Convert a MoleculeInput to an AtomInput.
+
+    NOTE: This function assumes that `distogram_atom_indices`,
+    `molecule_atom_indices`, and `atom_indices_for_frame` are already
+    offset as structure-global (and not molecule-local) atom indices.
+    In contrast, `missing_atom_indices` and `missing_token_indices`
+    are expected to be molecule-local atom indices.
+    """
     i = mol_input
 
     molecules = i.molecules
@@ -649,11 +673,15 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
         missing_atom_mask: List[Bool[" _"]] = []  # type: ignore
 
-        for num_atoms, mol_missing_atom_indices in zip(all_num_atoms, missing_atom_indices):
+        for num_atoms, mol_missing_atom_indices, mol_missing_token_indices, offset in zip(
+            all_num_atoms, missing_atom_indices, missing_token_indices, offsets
+        ):
             mol_miss_atom_mask = torch.zeros(num_atoms, dtype=torch.bool)
 
             if mol_missing_atom_indices.numel() > 0:
                 mol_miss_atom_mask.scatter_(-1, mol_missing_atom_indices, True)
+            if mol_missing_token_indices.numel() > 0:
+                mol_missing_token_indices += offset
 
             missing_atom_mask.append(mol_miss_atom_mask)
 
@@ -784,7 +812,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     atompair_feats: List[Float["m m dapi"]] = []  # type: ignore
 
-    for mol, offset in zip(molecules, offsets):
+    for mol in molecules:
         atompair_feats.append(extract_atompair_feats_fn(mol))
 
     assert len(atompair_feats) > 0
@@ -801,6 +829,7 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
 
     molecule_atom_indices = i.molecule_atom_indices
     distogram_atom_indices = i.distogram_atom_indices
+    atom_indices_for_frame = i.atom_indices_for_frame
 
     if exists(missing_token_indices) and missing_token_indices.shape[-1]:
         is_missing_molecule_atom = einx.equal(
@@ -809,9 +838,29 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         is_missing_distogram_atom = einx.equal(
             "n missing, n -> n missing", missing_token_indices, distogram_atom_indices
         ).any(dim=-1)
+        is_missing_atom_indices_for_frame = einx.equal(
+            "n missing, n c -> n c missing", missing_token_indices, atom_indices_for_frame
+        ).any(dim=(-1, -2))
 
         molecule_atom_indices = molecule_atom_indices.masked_fill(is_missing_molecule_atom, -1)
         distogram_atom_indices = distogram_atom_indices.masked_fill(is_missing_distogram_atom, -1)
+        atom_indices_for_frame = atom_indices_for_frame.masked_fill(
+            is_missing_atom_indices_for_frame[..., None], -1
+        )
+
+    # sanity-check the atom indices
+    if not (-1 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < total_atoms):
+        raise ValueError(
+            f"Invalid molecule atom indices found in `molecule_to_atom_input()` for {i.filepath}: {molecule_atom_indices}"
+        )
+    if not (-1 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < total_atoms):
+        raise ValueError(
+            f"Invalid distogram atom indices found in `molecule_to_atom_input()` for {i.filepath}: {distogram_atom_indices}"
+        )
+    if not (-1 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < total_atoms):
+        raise ValueError(
+            f"Invalid atom indices for frame found in `molecule_to_atom_input()` for {i.filepath}: {atom_indices_for_frame}"
+        )
 
     # handle atom positions
 
@@ -838,9 +887,9 @@ def molecule_to_atom_input(mol_input: MoleculeInput) -> AtomInput:
         atompair_inputs=atompair_inputs,
         molecule_atom_lens=atom_lens.long(),
         molecule_ids=i.molecule_ids,
-        molecule_atom_indices=i.molecule_atom_indices,
-        distogram_atom_indices=i.distogram_atom_indices,
-        atom_indices_for_frame=i.atom_indices_for_frame,
+        molecule_atom_indices=molecule_atom_indices,
+        distogram_atom_indices=distogram_atom_indices,
+        atom_indices_for_frame=atom_indices_for_frame,
         is_molecule_mod=is_molecule_mod,
         msa=i.msa,
         templates=i.templates,
@@ -1859,12 +1908,14 @@ class PDBInput:
     distillation: bool = False
     resolution: float | None = None
     constraints: List[CONSTRAINTS] | None = None
-    constraints_ratio: float = 0.5
+    constraints_ratio: float = 0.1
     max_msas_per_chain: int | None = None
     max_num_msa_tokens: int | None = None
     max_templates_per_chain: int | None = None
     num_templates_per_chain: int | None = None
     max_num_template_tokens: int | None = None
+    max_length: int | None = None
+    cutoff_date: str | None = None  # NOTE: must be supplied in "%Y-%m-%d" format
     kalign_binary_path: str | None = None
     extract_atom_feats_fn: Callable[[Atom], Float["m dai"]] = default_extract_atom_feats_fn  # type: ignore
     extract_atompair_feats_fn: Callable[[Mol], Float["m m dapi"]] = default_extract_atompair_feats_fn  # type: ignore
@@ -2456,7 +2507,7 @@ def load_msa_from_msa_dir(
     """Load MSA from a directory containing MSA files."""
     if verbose and (not_exists(msa_dir) or not os.path.exists(msa_dir)):
         logger.warning(
-            f"{msa_dir} does not exist. Dummy MSA features for each chain of file {file_id} will instead be loaded."
+            f"{msa_dir} MSA directory does not exist. Dummy MSA features for each chain of file {file_id} will instead be loaded."
         )
 
     msas = {}
@@ -2571,35 +2622,32 @@ def load_templates_from_templates_dir(
     kalign_binary_path: str | None = None,
     template_cutoff_date: datetime | None = None,
     randomly_sample_num_templates: bool = False,
-    raise_missing_exception: bool = False,
     verbose: bool = False,
 ) -> FeatureDict:
     """Load templates from a directory containing template PDB mmCIF files."""
-    if (
-        not_exists(templates_dir) or not os.path.exists(templates_dir)
-    ) and raise_missing_exception:
-        raise FileNotFoundError(f"{templates_dir} does not exist.")
-    elif not_exists(templates_dir) or not os.path.exists(templates_dir):
-        if verbose:
-            logger.warning(
-                f"{templates_dir} does not exist. Skipping template loading by returning `Nones`."
-            )
-        return {}
+    if verbose and (not_exists(templates_dir) or not os.path.exists(templates_dir)):
+        logger.warning(
+            f"{templates_dir} templates directory does not exist. Dummy template features for each chain of file {file_id} will instead be loaded."
+        )
 
-    if (not_exists(mmcif_dir) or not os.path.exists(mmcif_dir)) and raise_missing_exception:
-        raise FileNotFoundError(f"{mmcif_dir} does not exist.")
-    elif not_exists(mmcif_dir) or not os.path.exists(mmcif_dir):
-        if verbose:
-            logger.warning(
-                f"{mmcif_dir} does not exist. Skipping template loading by returning `Nones`."
-            )
-        return {}
+    if verbose and (not_exists(mmcif_dir) or not os.path.exists(mmcif_dir)):
+        logger.warning(
+            f"{mmcif_dir} mmCIF templates directory does not exist. Dummy template features for each chain of file {file_id} will instead be loaded."
+        )
 
     templates = defaultdict(list)
     for chain_id in chain_id_to_residue:
-        template_fpaths = glob.glob(os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8"))
+        template_fpaths = (
+            glob.glob(os.path.join(templates_dir, f"{file_id}{chain_id}_*.m8"))
+            if exists(templates_dir)
+            else []
+        )
 
         if not template_fpaths:
+            if verbose:
+                logger.warning(
+                    f"Could not find template for chain {chain_id} of file {file_id}. A dummy template will be installed for this chain."
+                )
             templates[chain_id] = []
             continue
 
@@ -2640,6 +2688,7 @@ def load_templates_from_templates_dir(
 
 
 @typecheck
+@timeout_decorator.timeout(PDB_INPUT_TO_MOLECULE_INPUT_MAX_SECONDS_PER_INPUT, use_signals=True)
 def pdb_input_to_molecule_input(
     pdb_input: PDBInput,
     biomol: Biomolecule | None = None,
@@ -2675,6 +2724,16 @@ def pdb_input_to_molecule_input(
 
         if not_exists(resolution) and exists(mmcif_resolution):
             resolution = mmcif_resolution
+
+    # perform release date filtering as requested
+
+    mmcif_release_date = datetime.strptime(mmcif_release_date, "%Y-%m-%d")
+
+    if exists(i.cutoff_date):
+        cutoff_date = datetime.strptime(i.cutoff_date, "%Y-%m-%d")
+        assert (
+            mmcif_release_date <= cutoff_date
+        ), f"The release date ({mmcif_release_date}) of the PDB example {filepath} exceeds the accepted cutoff date ({cutoff_date}). Skipping this example."
 
     # record PDB resolution value if available
 
@@ -2714,6 +2773,11 @@ def pdb_input_to_molecule_input(
     )  # NOTE: `Biomolecule.residue_index` is 1-based originally
     chain_index = torch.from_numpy(biomol.chain_index)
     num_tokens = len(biomol.atom_mask)
+
+    if exists(i.max_length):
+        assert (
+            num_tokens <= i.max_length
+        ), f"The number of tokens ({num_tokens}) in {filepath} exceeds the maximum initial length allowed ({i.max_length})."
 
     # create unique chain-residue index pairs to identify the first atom of each residue
     chain_residue_index = np.array(list(zip(biomol.chain_index, biomol.residue_index)))
@@ -2779,46 +2843,46 @@ def pdb_input_to_molecule_input(
         exists(feat)
         for feat in [msa, msa_row_mask, has_deletion, deletion_value, profile, deletion_mean]
     )
-    if all_msa_features_exist:
-        assert (
-            msa.shape[-1] == num_tokens
-        ), f"The number of tokens in the MSA ({msa.shape[-1]}) does not match the number of tokens in the biomolecule ({num_tokens}). "
 
-        additional_msa_feats = torch.stack(
-            [
-                has_deletion,
-                deletion_value,
-            ],
-            dim=-1,
-        )
+    assert all_msa_features_exist, "All MSA features must be derived for each example."
+    assert (
+        msa.shape[-1] == num_tokens
+    ), f"The number of tokens in the MSA ({msa.shape[-1]}) does not match the number of tokens in the biomolecule ({num_tokens}). "
 
-        additional_token_feats = torch.cat(
-            [
-                profile,
-                deletion_mean[:, None],
-            ],
-            dim=-1,
-        )
+    additional_msa_feats = torch.stack(
+        [
+            has_deletion,
+            deletion_value,
+        ],
+        dim=-1,
+    )
 
-        # convert the MSA into a one-hot representation
-        msa = make_one_hot(msa, NUM_MSA_ONE_HOT)
-        msa_row_mask = msa_row_mask.bool()
+    additional_token_feats = torch.cat(
+        [
+            profile,
+            deletion_mean[:, None],
+        ],
+        dim=-1,
+    )
+
+    # convert the MSA into a one-hot representation
+    msa = make_one_hot(msa, NUM_MSA_ONE_HOT)
+    msa_row_mask = msa_row_mask.bool()
 
     # retrieve templates for each chain
 
     mmcif_dir = str(Path(i.mmcif_filepath).parent.parent)
-    template_cutoff_date = datetime.strptime(mmcif_release_date, "%Y-%m-%d")
 
     # use the template cutoff dates listed in the AF3 supplement's Section 2.4
     if i.training:
         template_cutoff_date = (
             datetime.strptime("2018-04-30", "%Y-%m-%d")
             if i.distillation
-            else (template_cutoff_date - timedelta(days=60))
+            else (mmcif_release_date - timedelta(days=60))
         )
     else:
         # NOTE: this is the template cutoff date for all inference tasks
-        template_cutoff_date = datetime.strptime("2021-09-30", "%Y-%m-%d")
+        template_cutoff_date = datetime.strptime("2021-01-12", "%Y-%m-%d")
 
     if (
         exists(i.max_num_template_tokens)
@@ -2998,12 +3062,14 @@ def pdb_input_to_molecule_input(
 
     current_atom_index = 0
     current_res_index = -1
+    current_chain_index = -1
 
-    for mol_type, atom_mask, chemid, res_index in zip(
+    for mol_type, atom_mask, chemid, res_index, res_chain_index in zip(
         molecule_atom_types,
         biomol.atom_mask,
         biomol.chemid,
         biomol.residue_index,
+        biomol.chain_index,
     ):
         residue_constants = get_residue_constants(
             mol_type.replace("protein", "peptide").replace("mod_", "")
@@ -3018,11 +3084,12 @@ def pdb_input_to_molecule_input(
 
         if is_atomized_residue(mol_type):
             # collect indices for each ligand and modified polymer residue token (i.e., atom)
-            if current_res_index == res_index:
+            if current_res_index == res_index and current_chain_index == res_chain_index:
                 current_atom_index += 1
             else:
                 current_atom_index = 0
                 current_res_index = res_index
+                current_chain_index = res_chain_index
 
             # NOTE: we have to dynamically determine the token center atom index for atomized residues
             token_center_atom_index = np.where(atom_mask)[0][0]
@@ -3316,7 +3383,7 @@ def pdb_input_to_molecule_input(
         mol_miss_atom_indices = default(mol_miss_atom_indices, [])
         mol_miss_atom_indices = tensor(mol_miss_atom_indices, dtype=torch.long)
 
-        missing_atom_indices.append(mol_miss_atom_indices)
+        missing_atom_indices.append(mol_miss_atom_indices.clone())
         if is_atomized_residue(mol_type):
             missing_token_indices.extend([mol_miss_atom_indices for _ in range(mol.GetNumAtoms())])
         else:
@@ -3412,6 +3479,20 @@ def pdb_input_to_molecule_input(
     )
     num_atoms = atom_pos.shape[0]
 
+    # sanity-check the atom indices
+    if not (-1 <= distogram_atom_indices.min() <= distogram_atom_indices.max() < num_atoms):
+        raise ValueError(
+            f"Invalid distogram atom indices found in `pdb_input_to_molecule_input()` for {filepath}: {distogram_atom_indices}"
+        )
+    if not (-1 <= molecule_atom_indices.min() <= molecule_atom_indices.max() < num_atoms):
+        raise ValueError(
+            f"Invalid molecule atom indices found in `pdb_input_to_molecule_input()` for {filepath}: {molecule_atom_indices}"
+        )
+    if not (-1 <= atom_indices_for_frame.min() <= atom_indices_for_frame.max() < num_atoms):
+        raise ValueError(
+            f"Invalid atom indices for frame found in `pdb_input_to_molecule_input()` for {filepath}: {atom_indices_for_frame}"
+        )
+
     # create atom_parent_ids using the `Biomolecule` object, which governs in the atom
     # encoder / decoder which atom attends to which, where a design choice is made such
     # that mmCIF author chain indices are directly adopted to group atoms belonging to
@@ -3450,7 +3531,6 @@ def pdb_input_to_molecule_input(
             inference=i.inference,
             token_pos=token_pos,
             token_parent_ids=chain_index,
-            token_residue_ids=residue_index,
         )
 
     # create molecule input
@@ -3493,6 +3573,134 @@ def pdb_input_to_molecule_input(
 
 
 @typecheck
+def compute_pocket_constraint(
+    token_dists: Float["n n"],  # type: ignore
+    token_parent_ids: Int[" n"],  # type: ignore
+    unique_token_parent_ids: Int[" n"],  # type: ignore
+    theta_p_range: Tuple[float, float],
+    geom_distr: torch.distributions.Geometric,
+) -> Float["n n"]:  # type: ignore
+    """Compute the pairwise token pocket constraint.
+
+    :param token_dists: The pairwise token distances.
+    :param token_parent_ids: The token parent (i.e., chain) IDs.
+    :param unique_token_parent_ids: The unique token parent IDs.
+    :param theta_p_range: The range of `theta_p` values to use for the pocket constraint.
+    :param geom_distr: The geometric distribution to use for sampling.
+    :return: The pairwise token pocket constraint.
+    """
+
+    # sample chain ID and distance threshold for pocket constraint
+
+    sampled_target_parent_id = unique_token_parent_ids[
+        torch.randint(0, len(unique_token_parent_ids), (1,))
+    ]
+
+    sampled_theta_p = random.uniform(*theta_p_range)  # nosec
+    token_dists_mask = (token_dists > 0.0) & (token_dists < sampled_theta_p)
+
+    # restrict to inter-chain distances between any non-sampled chain and the sampled chain
+
+    token_parent_mask = einx.not_equal("i, j -> i j", token_parent_ids, token_parent_ids)
+    token_parent_mask[:, token_parent_ids != sampled_target_parent_id] = False
+
+    # sample pocket constraints
+
+    pairwise_token_mask = token_dists_mask & token_parent_mask
+    pairwise_token_sampled_mask = (geom_distr.sample(pairwise_token_mask.shape) == 1).squeeze(-1)
+    pairwise_token_mask[~pairwise_token_sampled_mask] = False
+
+    # for simplicity, define the pocket constraint as a diagonalized pairwise matrix
+
+    pairwise_token_constraint = torch.diag(pairwise_token_mask.any(-1)).float()
+
+    return pairwise_token_constraint
+
+
+@typecheck
+def compute_contact_constraint(
+    token_dists: Float["n n"],  # type: ignore
+    theta_d_range: Tuple[float, float],
+    geom_distr: torch.distributions.Geometric,
+) -> Float["n n"]:  # type: ignore
+    """Compute the pairwise token contact constraint.
+
+    :param token_dists: The pairwise token distances.
+    :param theta_d_range: The range of `theta_d` values to use for the contact constraint.
+    :param geom_distr: The geometric distribution to use for sampling.
+    :return: The pairwise token contact constraint.
+    """
+
+    # sample distance threshold for contact constraint
+
+    sampled_theta_d = random.uniform(*theta_d_range)  # nosec
+    token_dists_mask = (token_dists > 0.0) & (token_dists < sampled_theta_d)
+
+    # restrict to inter-token distances while sampling contact constraints
+
+    pairwise_token_mask = token_dists_mask
+    pairwise_token_sampled_mask = (geom_distr.sample(pairwise_token_mask.shape) == 1).squeeze(-1)
+    pairwise_token_mask[~pairwise_token_sampled_mask] = False
+
+    # define the contact constraint as a pairwise matrix
+
+    pairwise_token_constraint = pairwise_token_mask.float()
+
+    return pairwise_token_constraint
+
+
+@typecheck
+def compute_docking_constraint(
+    token_dists: Float["n n"],  # type: ignore
+    token_parent_ids: Int[" n"],  # type: ignore
+    unique_token_parent_ids: Int[" n"],  # type: ignore
+    dist_bins: Float["bins"],  # type: ignore
+    geom_distr: torch.distributions.Geometric,
+) -> Float["n n bins"]:  # type: ignore
+    """Compute the pairwise token docking constraint.
+
+    :param token_dists: The pairwise token distances.
+    :param token_parent_ids: The token parent (i.e., chain) IDs.
+    :param unique_token_parent_ids: The unique token parent IDs.
+    :param dist_bins: The distance bins to use for the docking constraint.
+    :param geom_distr: The geometric distribution to use for sampling.
+    :return: The pairwise token docking constraint as a one-hot encoding.
+    """
+
+    # partition chains into two groups
+
+    group1_mask = torch.isin(
+        token_parent_ids, unique_token_parent_ids[: len(unique_token_parent_ids) // 2]
+    )
+    group2_mask = torch.isin(
+        token_parent_ids, unique_token_parent_ids[len(unique_token_parent_ids) // 2 :]
+    )
+
+    # create masks for inter-group distances (group1 vs group2)
+
+    inter_group_mask = (group1_mask.unsqueeze(1) & group2_mask.unsqueeze(0)) | (
+        group2_mask.unsqueeze(1) & group1_mask.unsqueeze(0)
+    )
+
+    # apply binning to the pairwise distances while sampling docking constraints
+
+    token_distogram = distance_to_dgram(token_dists, dist_bins).float()
+    num_bins = token_distogram.shape[-1]
+
+    pairwise_token_sampled_mask = (geom_distr.sample(token_dists.shape) == 1).expand(
+        -1, -1, num_bins
+    )
+    token_distogram[~pairwise_token_sampled_mask] = 0.0
+
+    # assign one-hot encoding for distances that are in inter-group positions
+
+    pairwise_token_constraint = torch.zeros((*token_dists.shape, num_bins), dtype=torch.float32)
+    pairwise_token_constraint[inter_group_mask] = token_distogram[inter_group_mask]
+
+    return pairwise_token_constraint
+
+
+@typecheck
 def get_token_constraints(
     constraints: List[CONSTRAINTS],
     constraints_ratio: float,
@@ -3500,11 +3708,14 @@ def get_token_constraints(
     inference: bool,
     token_pos: Float["n 3"],  # type: ignore
     token_parent_ids: Int[" n"],  # type: ignore
-    token_residue_ids: Int[" n"],  # type: ignore
+    theta_p_range: Tuple[float, float] = (6.0, 20.0),
+    theta_d_range: Tuple[float, float] = (6.0, 30.0),
+    dist_bins: Float["bins"] = torch.tensor([0.0, 4.0, 8.0, 16.0]),  # type: ignore
+    p: float = 1.0 / 3.0,
 ) -> Float["n n dac"]:  # type: ignore
     """Construct pairwise token constraints for the given constraint strings and ratio.
 
-    NOTE: The `binding_site` constraint is inspired by the Chai-1 model.
+    NOTE: The `pocket`, `contact`, and `docking` constraints are inspired by the Chai-1 model.
 
     :param constraints: The constraints to use.
     :param constraints_ratio: The constraints ratio to use during training.
@@ -3512,34 +3723,86 @@ def get_token_constraints(
     :param inference: Whether the model is in inference.
     :param token_pos: The token center atom positions.
     :param token_parent_ids: The token parent (i.e., chain) IDs.
-    :param token_residue_ids: The token residue IDs.
+    :param theta_p_range: The range of `theta_p` values to use for the pocket constraint.
+    :param theta_d_range: The range of `theta_d` values to use for the contact constraint.
+    :param dist_bins: The distance bins to use for the docking constraint.
+    :param p: The probability of success for the geometric distribution.
     :return: The pairwise token constraints.
     """
     assert 0 < constraints_ratio <= 1, "The constraints ratio must be in the range (0, 1]."
+    assert (
+        0 < theta_p_range[0] < theta_p_range[1]
+    ), "The `theta_p_range` must be monotonically increasing."
 
-    num_atoms = token_pos.shape[0]
-    keep_constraints = inference or (training and random.random() < constraints_ratio)  # nosec
+    unique_token_parent_ids = torch.unique(token_parent_ids)
+    num_chains = unique_token_parent_ids.shape[0]
+
+    num_tokens = token_pos.shape[0]
+    token_ids = torch.arange(num_tokens)
+
+    geom_distr = torch.distributions.Geometric(torch.tensor([p]))
 
     token_constraints = []
 
     for constraint in constraints:
         constraint_dim = CONSTRAINT_DIMS[constraint]
-
-        pairwise_token_constraint = torch.zeros(
-            (num_atoms, num_atoms, constraint_dim), dtype=torch.float32
+        pairwise_token_constraint = torch.full(
+            (num_tokens, num_tokens, constraint_dim), CONSTRAINTS_MASK_VALUE, dtype=torch.float32
         )
 
-        if keep_constraints and constraint == "binding_site":
-            # NOTE: Binding sites are defined by finding pairs of token center atoms that
-            # are within 8 Å of each other and belong to different chains and residues.
-            token_dists = torch.cdist(token_pos, token_pos)
+        token_dists = torch.cdist(token_pos, token_pos)
+        keep_constraints = inference or (training and random.random() < constraints_ratio)  # nosec
 
-            token_dists_mask = (token_dists > 0.0) & (token_dists < 8.0)
-            token_parent_mask = token_parent_ids[None, :] != token_parent_ids[:, None]
-            token_residue_mask = token_residue_ids[None, :] != token_residue_ids[:, None]
+        if keep_constraints and constraint == "pocket" and num_chains > 1:
+            pairwise_token_constraint = compute_pocket_constraint(
+                token_dists=token_dists,
+                token_parent_ids=token_parent_ids,
+                unique_token_parent_ids=unique_token_parent_ids,
+                theta_p_range=theta_p_range,
+                geom_distr=geom_distr,
+            ).unsqueeze(-1)
+        elif keep_constraints and constraint == "contact":
+            pairwise_token_constraint = compute_contact_constraint(
+                token_dists=token_dists,
+                theta_d_range=theta_d_range,
+                geom_distr=geom_distr,
+            ).unsqueeze(-1)
+        elif keep_constraints and constraint == "docking" and num_chains > 1:
+            pairwise_token_constraint = compute_docking_constraint(
+                token_dists=token_dists,
+                token_parent_ids=token_parent_ids,
+                unique_token_parent_ids=unique_token_parent_ids,
+                dist_bins=dist_bins,
+                geom_distr=geom_distr,
+            )
 
-            pairwise_token_mask = token_dists_mask & token_parent_mask & token_residue_mask
-            pairwise_token_constraint[pairwise_token_mask] = 1.0
+        # during training, dropout chains
+
+        chain_dropout_constraints = random.random() < constraints_ratio  # nosec
+        if keep_constraints and training and chain_dropout_constraints:
+            sampled_chains = unique_token_parent_ids[
+                torch.randint(0, num_chains, (random.randint(1, num_chains),))  # nosec
+            ]
+            sampled_chain_tokens_pairwise_mask = to_pairwise_mask(
+                torch.isin(token_parent_ids, sampled_chains)
+            )
+            pairwise_token_constraint[~sampled_chain_tokens_pairwise_mask] = 0.0
+
+        # during training, dropout tokens
+
+        token_dropout_constraints = random.random() < constraints_ratio  # nosec
+        if keep_constraints and training and token_dropout_constraints:
+            sampled_tokens = token_ids[
+                torch.randint(0, num_tokens, (random.randint(1, num_tokens),))  # nosec
+            ]
+            sampled_tokens_pairwise_mask = to_pairwise_mask(torch.isin(token_ids, sampled_tokens))
+            pairwise_token_constraint[~sampled_tokens_pairwise_mask] = 0.0
+
+        # aggregate token constraints
+
+        if keep_constraints and not pairwise_token_constraint.any():
+            # NOTE: if all constraints were dropped, we will not include the constraint
+            pairwise_token_constraint.fill_(CONSTRAINTS_MASK_VALUE)
 
         token_constraints.append(pairwise_token_constraint)
 
@@ -3565,6 +3828,7 @@ class PDBDataset(Dataset):
         spatial_interface_weight: float = 0.4,
         crop_size: int = 384,
         training: bool | None = None,  # extra training flag placed by Alex on PDBInput
+        filter_out_pdb_ids: Set[str] | None = None,
         sample_only_pdb_ids: Set[str] | None = None,
         return_atom_inputs: bool = False,
         **pdb_input_kwargs,
@@ -3578,6 +3842,7 @@ class PDBDataset(Dataset):
         self.sampler = sampler
         self.sample_type = sample_type
         self.training = training
+        self.filter_out_pdb_ids = filter_out_pdb_ids
         self.sample_only_pdb_ids = sample_only_pdb_ids
         self.return_atom_inputs = return_atom_inputs
         self.pdb_input_kwargs = pdb_input_kwargs
@@ -3603,6 +3868,18 @@ class PDBDataset(Dataset):
                 os.path.splitext(os.path.basename(file.name))[0]: file
                 for file in folder.glob(os.path.join("**", "*.cif"))
             }
+
+        if exists(filter_out_pdb_ids):
+            if exists(self.sampler):
+                assert not any(
+                    pdb_id in sampler_pdb_ids for pdb_id in filter_out_pdb_ids
+                ), "Some PDB IDs in `filter_out_pdb_ids` are present in the dataset's sampler mappings."
+            else:
+                self.files = {
+                    pdb_id: file
+                    for pdb_id, file in self.files.items()
+                    if pdb_id not in filter_out_pdb_ids
+                }
 
         if exists(sample_only_pdb_ids):
             if exists(self.sampler):
@@ -3686,7 +3963,7 @@ class PDBDataset(Dataset):
 
         return i
 
-    def __getitem__(self, idx: int | str, max_attempts: int = 10) -> PDBInput | AtomInput:
+    def __getitem__(self, idx: int | str, max_attempts: int = 50) -> PDBInput | AtomInput:
         """Return either a PDBInput or an AtomInput object for the specified index."""
         assert max_attempts > 0, "The maximum number of attempts must be greater than 0."
 
@@ -3747,7 +4024,7 @@ def maybe_transform_to_atom_input(i: Any, raise_exception: bool = False) -> Atom
     try:
         return maybe_to_atom_fn(i)
     except Exception as e:
-        logger.error(f"Failed to convert input {i} to AtomInput due to: {e}")
+        logger.warning(f"Failed to convert input {i} to AtomInput due to: {e}")
         if raise_exception:
             raise e
         return None

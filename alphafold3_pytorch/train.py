@@ -9,7 +9,6 @@ from beartype.typing import Any, Dict, List, Optional, Tuple
 from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.fabric.plugins.environments.cluster_environment import ClusterEnvironment
 from lightning.pytorch.loggers import Logger
-from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.strategy import Strategy
 from omegaconf import DictConfig
 
@@ -74,13 +73,6 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     log.info("Instantiating loggers...")
     logger: List[Logger] = instantiate_loggers(cfg.get("logger"))
-
-    if any(isinstance(lgr, WandbLogger) for lgr in logger):
-        # use the latest WandB backend
-        # NOTE: will be opt-out in version 0.18.0
-        import wandb
-
-        wandb.require("core")
 
     plugins = None
     if "_target_" in cfg.environment:

@@ -102,7 +102,7 @@ repos:
             "--extend-ignore",
             "E203,E402,E501,F401,F841,RST2,RST301",
             "--exclude",
-            "logs/*,data/*,alphafold3_pytorch/data/life.py,alphafold3_pytorch/models/alphafold3_module.py,alphafold3_pytorch/models/components/alphafold3.py,alphafold3_pytorch/models/components/attention.py,alphafold3_pytorch/models/components/inputs.py,alphafold3_pytorch/utils/model_utils.py",
+            "logs/*,data/*,alphafold3_pytorch/data/life.py,alphafold3_pytorch/models/alphafold3_module.py,alphafold3_pytorch/models/components/alphafold3.py,alphafold3_pytorch/models/components/attention.py,alphafold3_pytorch/models/components/inputs.py,alphafold3_pytorch/models/components/nlm.py,alphafold3_pytorch/models/components/plm.py,alphafold3_pytorch/utils/model_utils.py",
           ]
         additional_dependencies: [flake8-rst-docstrings==0.3.0]
 
@@ -146,7 +146,7 @@ repos:
     hooks:
       - id: codespell
         args:
-          - --skip=logs/**,data/**,*.ipynb,README.md,alphafold3_pytorch/common/*_constants.py,alphafold3_pytorch/data/chemical/*,alphafold3_pytorch/data/life.py
+          - --skip=logs/**,data/**,*.ipynb,README.md,alphafold3_pytorch/common/*_constants.py,alphafold3_pytorch/data/chemical/*,alphafold3_pytorch/data/life.py,tests/test_input.py,alphafold3_pytorch/models/components/nlm.py,alphafold3_pytorch/models/components/alphafold3.py
           # - --ignore-words-list=abc,def
 
   # jupyter notebook cell output clearing

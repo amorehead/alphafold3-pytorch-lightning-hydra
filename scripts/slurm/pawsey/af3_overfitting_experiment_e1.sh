@@ -13,15 +13,8 @@
 #################################################################
 
 # Load required modules
-module load pawseyenv/2023.08
-# NOTE: The following module swap is needed due to a PyTorch module bug
-module load singularity/3.11.4-nohost
-
-# Prepare cache paths
-export MIOPEN_USER_DB_PATH="/scratch/pawsey1018/$USER/tmp/my-miopen-cache/af3_rocm"
-export MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_USER_DB_PATH}
-rm -rf "${MIOPEN_USER_DB_PATH}"
-mkdir -p "${MIOPEN_USER_DB_PATH}"
+module load pawseyenv/2024.05
+module load singularity/4.1.0-slurm
 
 # Define the container image path
 export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hydra/af3-pytorch-lightning-hydra_0.5.6_source_dev.sif"
@@ -30,7 +23,7 @@ export SINGULARITY_CONTAINER="/scratch/pawsey1018/$USER/af3-pytorch-lightning-hy
 export OMP_NUM_THREADS=8
 
 # Define WandB run ID
-RUN_ID="kah0gjep"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
+RUN_ID="qyj6mki3"  # NOTE: Generate a unique ID for each run using `python3 scripts/generate_id.py`
 
 # Run Singularity container
 srun singularity exec --rocm \
@@ -41,7 +34,6 @@ srun singularity exec --rocm \
     "$SINGULARITY_CONTAINER" \
     bash -c "
         /usr/bin/kalign --version \
-        && python3 -c 'import torch; print(torch.__version__)' \
         && WANDB_RESUME=allow WANDB_RUN_ID=$RUN_ID OMP_NUM_THREADS=$OMP_NUM_THREADS NCCL_DEBUG=INFO \
         python3 alphafold3_pytorch/train.py \
         data.batch_size=1 \

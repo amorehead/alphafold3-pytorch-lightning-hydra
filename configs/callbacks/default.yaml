@@ -13,7 +13,7 @@ last_model_checkpoint:
   monitor: null
   verbose: True
   auto_insert_metric_name: False
-  every_n_train_steps: 1000 # NOTE: this is an improvised fault-tolerance value to enable one to resume training from the most-recent checkpoint, which may need to be adjusted
+  every_n_train_steps: 300 # NOTE: this is an improvised fault-tolerance value to enable one to resume training from the most-recent checkpoint, which may need to be adjusted
   enable_version_counter: False
 
 model_summary:

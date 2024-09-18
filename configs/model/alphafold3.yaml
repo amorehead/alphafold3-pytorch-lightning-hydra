@@ -6,7 +6,7 @@ optimizer:
   lr: 1.8e-3
   betas: [0.9, 0.95]
   eps: 1e-8
-  foreach: false
+  # foreach: false
 
 scheduler:
   _target_: torch.optim.lr_scheduler.LambdaLR
@@ -21,8 +21,9 @@ net:
   num_dist_bins: 64
   pdb_training_set: true
   diffusion_num_augmentations: 4 # NOTE: must be one of (initial_training: 48, fine_tuning_1: 32, fine_tuning_2: 32, fine_tuning_3: 32), proceeding from left to right following Table 6 in the paper
-  plm_embeddings: esm2_t33_650M_UR50D
-  constraint_embeddings: ${resolve_constraint_embeddings:${data.constraints}}
+  plm_embeddings: null # NOTE: if specified, a list of values in (`esm2_t33_650M_UR50D`, `prostT5`)
+  nlm_embeddings: null # NOTE: if specified, a list of values in (`rinalmo`)
+  constraints: ${data.constraints}
 
   checkpoint_input_embedding: true
   checkpoint_trunk_pairformer: true
@@ -31,8 +32,8 @@ net:
   checkpoint_confidence_head: true
 
 # training parameters
-compile: false # compile model for faster training with pytorch 2.0
-skip_invalid_gradient_updates: true
+compile: false # compile model for faster training with PyTorch 2.0
+skip_invalid_gradient_updates: true # zero-out invalid gradient updates
 
 # model parameters
 parameters_initialized_from: random # NOTE: must be one of (initial_training: 'random', fine_tuning_1: 'initial_training', fine_tuning_2: 'fine_tuning_1', fine_tuning_3: 'fine_tuning_2'), proceeding from left to right following Table 6 in the paper

@@ -43,6 +43,8 @@ data:
   max_templates_per_chain: 20
   num_templates_per_chain: 4
   max_num_template_tokens: 5120
+  max_train_length: 10240
+  max_val_length: 2560
 
   overfitting_train_examples: true
   sample_only_pdb_ids:
@@ -77,3 +79,6 @@ trainer:
   check_val_every_n_epoch: null
   val_check_interval: 50
   log_every_n_steps: 1
+# NOTE: the following argument is only needed when using the `fsdp` strategy
+# strategy:
+#   ignored_modules: [network.plms]

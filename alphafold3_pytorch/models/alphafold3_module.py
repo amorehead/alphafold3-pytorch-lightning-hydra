@@ -78,6 +78,10 @@ class Alphafold3LitModule(LightningModule):
 
         self.save_hyperparameters(ignore=["network"], logger=False)
 
+        # delay loading the model until the `configure_model` hook is called
+
+        self.network = None
+
         # for averaging loss across batches
 
         self.train_loss = MeanMetric()
@@ -95,6 +99,10 @@ class Alphafold3LitModule(LightningModule):
 
         self.val_top_ranked_lddt = MeanMetric()
         self.test_top_ranked_lddt = MeanMetric()
+
+        # activate manual optimization for fault-tolerant backward passes
+
+        self.automatic_optimization = False
 
     @typecheck
     def prepare_batch_dict(self, batch_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -117,11 +125,15 @@ class Alphafold3LitModule(LightningModule):
         batch_dict = batch.dict()
         batch_model_forward_dict = self.prepare_batch_dict(batch.model_forward_dict())
 
+        # cache the current filepaths for logging errors
         filepaths = (
             list(batch_dict["filepath"])
             if "filepath" in batch_dict and exists(batch_dict["filepath"])
             else None
         )
+        self.current_filepaths = filepaths
+
+        log.info(f"Forward pass for step {self.global_step} with filepaths: {filepaths}")
 
         return self.network(
             **batch_model_forward_dict,
@@ -169,7 +181,7 @@ class Alphafold3LitModule(LightningModule):
             self.train_loss,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -178,6 +190,9 @@ class Alphafold3LitModule(LightningModule):
             for (k, v) in loss_breakdown._asdict().items()
         }
         self.log_dict(
+            # NOTE: we set `sync_dist=True` only for `loss_breakdown`,
+            # since it is not wrapped in a `torchmetric.Metric` object
+            # which would automatically handle distributed synchronization
             loss_breakdown_dict,
             on_step=True,
             on_epoch=True,
@@ -192,7 +207,30 @@ class Alphafold3LitModule(LightningModule):
             if batch_idx % self.hparams.visualize_train_samples_every_n_steps == 0:
                 self.sample_and_visualize(batch, batch_idx, phase="train")
 
-        # return loss or backpropagation will fail
+        # backprop loss and take a step with the optimizer and learning rate scheduler,
+        # while handling e.g., anomalous AMD HIP errors during backpropagation
+
+        opt = self.optimizers()
+        sch = self.lr_schedulers()
+
+        try:
+            opt.zero_grad()
+            self.manual_backward(loss)
+
+            self.clip_gradients(
+                opt,
+                gradient_clip_val=10.0,
+                gradient_clip_algorithm="norm",
+            )
+
+            opt.step()
+            sch.step()
+
+        except Exception as e:
+            log.error(
+                f"Caught an exception ({e}) during the backward pass of loss {loss} for step {self.global_step} with filepaths {self.current_filepaths}, which are associated with the following batched inputs: {[(k, batch_dict[k], (batch_dict[k].shape if torch.is_tensor(batch_dict[k]) else None)) for k in batch_dict]}. Zeroing gradients and skipping this update step."
+            )
+            opt.zero_grad()
 
         return loss
 
@@ -270,7 +308,7 @@ class Alphafold3LitModule(LightningModule):
             self.val_model_selection_score,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -280,7 +318,7 @@ class Alphafold3LitModule(LightningModule):
             self.val_top_ranked_lddt,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -411,7 +449,7 @@ class Alphafold3LitModule(LightningModule):
             self.test_model_selection_score,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -421,7 +459,7 @@ class Alphafold3LitModule(LightningModule):
             self.test_top_ranked_lddt,
             on_step=True,
             on_epoch=True,
-            sync_dist=True,
+            sync_dist=False,
             batch_size=len(batch.atom_inputs),
         )
 
@@ -605,6 +643,9 @@ class Alphafold3LitModule(LightningModule):
 
         :return: The configured model.
         """
+        if exists(self.network):
+            return
+
         if exists(self.trainer):
             sleep = self.trainer.global_rank * 4
             log.info(f"Rank {self.trainer.global_rank}: Sleeping for {sleep}s to avoid CPU OOMs.")

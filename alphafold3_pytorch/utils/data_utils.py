@@ -2,7 +2,7 @@ import csv
 
 import numpy as np
 import torch
-from beartype.typing import Any, Dict, List, Literal, Set, Tuple
+from beartype.typing import Any, Dict, Iterable, List, Literal, Set, Tuple
 from torch import Tensor
 
 from alphafold3_pytorch.utils.tensor_typing import ChainType, ResidueType, typecheck
@@ -294,3 +294,15 @@ def load_tsv_to_dict(filepath):
         for row in reader:
             result[row[0]] = row[1]
     return result
+
+
+@typecheck
+def join(arr: Iterable[Any], delimiter: str = "") -> str:
+    """Join the elements of an iterable into a string using a delimiter.
+
+    :param arr: The iterable to join.
+    :param delimiter: The delimiter to use.
+    :return: The joined string.
+    """
+    # Re-do an ugly part of python
+    return delimiter.join(arr)
