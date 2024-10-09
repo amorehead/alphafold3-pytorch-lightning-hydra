@@ -391,6 +391,7 @@ def AF3DataLoader(
     atoms_per_window: int | None = None,
     map_input_fn: Callable | None = None,
     transform_to_atom_inputs: bool = True,
+    int_pad_value: int = -1,
     **kwargs,
 ):
     """Create a `torch.utils.data.DataLoader` with the `collate_inputs_to_batched_atom_input` or
@@ -407,6 +408,7 @@ def AF3DataLoader(
         collate_inputs_to_batched_atom_input,
         atoms_per_window=atoms_per_window,
         transform_to_atom_inputs=transform_to_atom_inputs,
+        int_pad_value=int_pad_value,
     )
 
     if exists(map_input_fn):
